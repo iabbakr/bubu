@@ -6,7 +6,8 @@ import { Typography } from "@/constants/theme";
 export type ThemedTextProps = TextProps & {
   lightColor?: string;
   darkColor?: string;
-  type?: "h1" | "h2" | "h3" | "h4" | "body" | "small" | "link";
+  type?: "h1" | "h2" | "h3" | "h4" | "body" | "caption" | "label" | "link";
+  weight?: "regular" | "medium" | "semibold" | "bold";
 };
 
 export function ThemedText({
@@ -14,6 +15,7 @@ export function ThemedText({
   lightColor,
   darkColor,
   type = "body",
+  weight,
   ...rest
 }: ThemedTextProps) {
   const { theme, isDark } = useTheme();
@@ -46,8 +48,10 @@ export function ThemedText({
         return Typography.h4;
       case "body":
         return Typography.body;
-      case "small":
-        return Typography.small;
+      case "caption":
+        return Typography.caption;
+      case "label":
+        return Typography.label;
       case "link":
         return Typography.link;
       default:
@@ -55,7 +59,23 @@ export function ThemedText({
     }
   };
 
+  const getWeightStyle = () => {
+    if (!weight) return undefined;
+    switch (weight) {
+      case "regular":
+        return { fontWeight: "400" as const };
+      case "medium":
+        return { fontWeight: "500" as const };
+      case "semibold":
+        return { fontWeight: "600" as const };
+      case "bold":
+        return { fontWeight: "700" as const };
+      default:
+        return undefined;
+    }
+  };
+
   return (
-    <Text style={[{ color: getColor() }, getTypeStyle(), style]} {...rest} />
+    <Text style={[{ color: getColor() }, getTypeStyle(), getWeightStyle(), style]} {...rest} />
   );
 }

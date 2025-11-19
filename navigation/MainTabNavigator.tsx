@@ -3,12 +3,18 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet } from "react-native";
-import HomeStackNavigator from "@/navigation/HomeStackNavigator";
+import SupermarketStackNavigator from "@/navigation/SupermarketStackNavigator";
+import PharmacyStackNavigator from "@/navigation/PharmacyStackNavigator";
+import ServicesStackNavigator from "@/navigation/ServicesStackNavigator";
+import OrdersStackNavigator from "@/navigation/OrdersStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
 
 export type MainTabParamList = {
-  HomeTab: undefined;
+  SupermarketTab: undefined;
+  PharmacyTab: undefined;
+  ServicesTab: undefined;
+  OrdersTab: undefined;
   ProfileTab: undefined;
 };
 
@@ -19,7 +25,7 @@ export default function MainTabNavigator() {
 
   return (
     <Tab.Navigator
-      initialRouteName="HomeTab"
+      initialRouteName="SupermarketTab"
       screenOptions={{
         tabBarActiveTintColor: theme.tabIconSelected,
         tabBarInactiveTintColor: theme.tabIconDefault,
@@ -31,6 +37,7 @@ export default function MainTabNavigator() {
           }),
           borderTopWidth: 0,
           elevation: 0,
+          height: 80,
         },
         tabBarBackground: () =>
           Platform.OS === "ios" ? (
@@ -41,15 +48,49 @@ export default function MainTabNavigator() {
             />
           ) : null,
         headerShown: false,
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "500",
+        },
       }}
     >
       <Tab.Screen
-        name="HomeTab"
-        component={HomeStackNavigator}
+        name="SupermarketTab"
+        component={SupermarketStackNavigator}
         options={{
-          title: "Home",
+          title: "Supermarket",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="home" size={size} color={color} />
+            <Feather name="shopping-cart" size={20} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="PharmacyTab"
+        component={PharmacyStackNavigator}
+        options={{
+          title: "Pharmacy",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="heart" size={20} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="ServicesTab"
+        component={ServicesStackNavigator}
+        options={{
+          title: "Services",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="zap" size={20} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="OrdersTab"
+        component={OrdersStackNavigator}
+        options={{
+          title: "Orders",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="package" size={20} color={color} />
           ),
         }}
       />
@@ -59,7 +100,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="user" size={size} color={color} />
+            <Feather name="user" size={20} color={color} />
           ),
         }}
       />

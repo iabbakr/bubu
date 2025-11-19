@@ -9,7 +9,7 @@ localPort = 8081
 externalPort = 80
 
 [[ports]]
-localPort = 8082
+localPort = 44121
 externalPort = 3000
 
 [workflows]
@@ -67,6 +67,7 @@ waitForPort = 8081
 
 [agent]
 stack = "EXPO"
+integrations = ["resend:1.0.0"]
 
 [deployment]
 deploymentTarget = "static"

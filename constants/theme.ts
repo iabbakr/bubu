@@ -1,30 +1,58 @@
 import { Platform } from "react-native";
 
-const tintColorLight = "#007AFF";
-const tintColorDark = "#0A84FF";
+const navy = "#000080";
+const snowWhite = "#FFFAFA";
+const lightBlue = "#ADD8E6";
+const slateGray = "#6D8196";
 
 export const Colors = {
   light: {
-    text: "#11181C",
-    buttonText: "#FFFFFF",
-    tabIconDefault: "#687076",
-    tabIconSelected: tintColorLight,
-    link: "#007AFF",
-    backgroundRoot: "#FFFFFF", // Elevation 0
-    backgroundDefault: "#F2F2F2", // Elevation 1
-    backgroundSecondary: "#E6E6E6", // Elevation 2
-    backgroundTertiary: "#D9D9D9", // Elevation 3
+    primary: navy,
+    secondary: lightBlue,
+    background: snowWhite,
+    accent: slateGray,
+    text: navy,
+    textSecondary: slateGray,
+    textDisabled: slateGray + "66",
+    textInverted: snowWhite,
+    buttonText: snowWhite,
+    tabIconDefault: slateGray + "80",
+    tabIconSelected: navy,
+    link: navy,
+    success: "#22C55E",
+    warning: "#F59E0B",
+    error: "#EF4444",
+    info: lightBlue,
+    backgroundRoot: snowWhite,
+    backgroundDefault: snowWhite,
+    backgroundSecondary: lightBlue + "15",
+    backgroundTertiary: slateGray + "10",
+    border: slateGray + "26",
+    cardBackground: snowWhite,
   },
   dark: {
-    text: "#ECEDEE",
-    buttonText: "#FFFFFF",
-    tabIconDefault: "#9BA1A6",
-    tabIconSelected: tintColorDark,
-    link: "#0A84FF",
-    backgroundRoot: "#1F2123", // Elevation 0
-    backgroundDefault: "#2A2C2E", // Elevation 1
-    backgroundSecondary: "#353739", // Elevation 2
-    backgroundTertiary: "#404244", // Elevation 3
+    primary: lightBlue,
+    secondary: slateGray,
+    background: "#1A1A2E",
+    accent: lightBlue,
+    text: snowWhite,
+    textSecondary: slateGray,
+    textDisabled: slateGray + "66",
+    textInverted: navy,
+    buttonText: navy,
+    tabIconDefault: slateGray,
+    tabIconSelected: lightBlue,
+    link: lightBlue,
+    success: "#22C55E",
+    warning: "#F59E0B",
+    error: "#EF4444",
+    info: lightBlue,
+    backgroundRoot: "#1A1A2E",
+    backgroundDefault: "#1A1A2E",
+    backgroundSecondary: lightBlue + "15",
+    backgroundTertiary: slateGray + "15",
+    border: slateGray + "40",
+    cardBackground: "#252540",
   },
 };
 
@@ -33,60 +61,58 @@ export const Spacing = {
   sm: 8,
   md: 12,
   lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 32,
-  "4xl": 40,
-  "5xl": 48,
+  xl: 24,
+  "2xl": 32,
+  "3xl": 40,
+  "4xl": 48,
+  "5xl": 56,
   inputHeight: 48,
-  buttonHeight: 52,
+  buttonHeight: 48,
+  fabSize: 56,
 };
 
 export const BorderRadius = {
-  xs: 8,
-  sm: 12,
-  md: 18,
-  lg: 24,
-  xl: 30,
-  "2xl": 40,
-  "3xl": 50,
+  xs: 6,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  "2xl": 28,
+  "3xl": 32,
   full: 9999,
 };
 
 export const Typography = {
   h1: {
-    fontSize: 32,
-    lineHeight: 40,
+    fontSize: 28,
     fontWeight: "700" as const,
   },
   h2: {
-    fontSize: 28,
-    lineHeight: 36,
-    fontWeight: "700" as const,
+    fontSize: 22,
+    fontWeight: "600" as const,
   },
   h3: {
-    fontSize: 24,
-    lineHeight: 32,
+    fontSize: 18,
     fontWeight: "600" as const,
   },
   h4: {
-    fontSize: 20,
-    lineHeight: 28,
+    fontSize: 16,
     fontWeight: "600" as const,
   },
   body: {
     fontSize: 16,
-    lineHeight: 24,
     fontWeight: "400" as const,
   },
-  small: {
+  caption: {
     fontSize: 14,
-    lineHeight: 20,
     fontWeight: "400" as const,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: "500" as const,
   },
   link: {
     fontSize: 16,
-    lineHeight: 24,
     fontWeight: "400" as const,
   },
 };

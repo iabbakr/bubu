@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -8,16 +8,24 @@ import { StatusBar } from "expo-status-bar";
 
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AuthProvider } from "@/hooks/useAuth";
+import { initializeSampleData } from "@/utils/initData";
 
 export default function App() {
+  useEffect(() => {
+    initializeSampleData();
+  }, []);
+
   return (
   <ErrorBoundary>
     <SafeAreaProvider>
         <GestureHandlerRootView style={styles.root}>
           <KeyboardProvider>
-            <NavigationContainer>
-              <MainTabNavigator />
-            </NavigationContainer>
+            <AuthProvider>
+              <NavigationContainer>
+                <MainTabNavigator />
+              </NavigationContainer>
+            </AuthProvider>
             <StatusBar style="auto" />
           </KeyboardProvider>
         </GestureHandlerRootView>

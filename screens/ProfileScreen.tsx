@@ -1,194 +1,197 @@
-import { useState } from "react";
-import { StyleSheet, View, TextInput } from "react-native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { View, StyleSheet, Pressable, Alert } from "react-native";
+import { useState, useEffect } from "react";
+import { Feather } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { ThemedText } from "../components/ThemedText";
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenScrollView } from "../components/ScreenScrollView";
+import { firebaseService, Wallet } from "../utils/firebase";
+import { useAuth } from "../hooks/useAuth";
+import { useTheme } from "../hooks/useTheme";
+import { Spacing, BorderRadius } from "../constants/theme";
 
-import { ScreenKeyboardAwareScrollView } from "@/components/ScreenKeyboardAwareScrollView";
-import { ThemedText } from "@/components/ThemedText";
-import { Button } from "@/components/Button";
-import { useTheme } from "@/hooks/useTheme";
-import { Spacing, BorderRadius, Typography } from "@/constants/theme";
-import Spacer from "@/components/Spacer";
-import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
+export default function ProfileScreen() {
+  const { theme } = useTheme();
+  const { user, signOut } = useAuth();
+  const navigation = useNavigation();
+  const [wallet, setWallet] = useState<Wallet | null>(null);
 
-type ProfileScreenProps = {
-  navigation: NativeStackNavigationProp<ProfileStackParamList, "Profile">;
-};
+  useEffect(() => {
+    if (user) {
+      loadWallet();
+    }
+  }, [user]);
 
-export default function ProfileScreen({ navigation }: ProfileScreenProps) {
-  const { theme, isDark } = useTheme();
-
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  const handleSubmit = () => {
-    console.log("Form submitted:", { name, email, password });
+  const loadWallet = async () => {
+    if (!user) return;
+    
+    try {
+      const data = await firebaseService.getWallet(user.uid);
+      setWallet(data);
+    } catch (error) {
+      console.error("Error loading wallet:", error);
+    }
   };
 
-  const inputStyle = [
-    styles.input,
-    {
-      backgroundColor: theme.backgroundDefault,
-      color: theme.text,
-    },
-  ];
+  const handleSignOut = async () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            await signOut();
+          },
+        },
+      ]
+    );
+  };
+
+  const renderMenuItem = (icon: string, title: string, onPress: () => void) => (
+    <Pressable
+      style={({ pressed }) => [
+        styles.menuItem,
+        {
+          backgroundColor: theme.cardBackground,
+          borderColor: theme.border,
+          opacity: pressed ? 0.7 : 1,
+        }
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.menuItemLeft}>
+        <Feather name={icon as any} size={20} color={theme.primary} />
+        <ThemedText style={{ marginLeft: Spacing.md }}>{title}</ThemedText>
+      </View>
+      <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+    </Pressable>
+  );
+
+  if (!user) {
+    return (
+      <ScreenScrollView>
+        <View style={styles.container}>
+          <View style={[styles.authPrompt, { backgroundColor: theme.backgroundSecondary }]}>
+            <Feather name="user" size={64} color={theme.textSecondary} />
+            <ThemedText type="h2" style={{ marginTop: Spacing.lg, marginBottom: Spacing.md }}>
+              Welcome to MarketHub
+            </ThemedText>
+            <ThemedText type="caption" style={{ color: theme.textSecondary, textAlign: "center", marginBottom: Spacing.xl }}>
+              Sign in or create an account to start shopping
+            </ThemedText>
+            <PrimaryButton title="Get Started" onPress={() => {}} />
+          </View>
+        </View>
+      </ScreenScrollView>
+    );
+  }
 
   return (
-    <ScreenKeyboardAwareScrollView>
-      <View style={styles.section}>
-        <ThemedText type="h1">Heading 1</ThemedText>
-        <ThemedText type="small" style={styles.meta}>
-          32px • Bold
-        </ThemedText>
-      </View>
+    <ScreenScrollView>
+      <View style={styles.container}>
+        <View style={[styles.profileHeader, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+          <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
+            <ThemedText type="h1" lightColor="#fff" darkColor="#fff">
+              {user.name[0].toUpperCase()}
+            </ThemedText>
+          </View>
+          <ThemedText type="h2" style={{ marginTop: Spacing.lg }}>
+            {user.name}
+          </ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
+            {user.email}
+          </ThemedText>
+          <View style={[styles.roleBadge, { backgroundColor: theme.secondary + "33" }]}>
+            <ThemedText type="label" style={{ color: theme.primary }}>
+              {user.role.toUpperCase()}
+            </ThemedText>
+          </View>
+        </View>
 
-      <View style={styles.section}>
-        <ThemedText type="h2">Heading 2</ThemedText>
-        <ThemedText type="small" style={styles.meta}>
-          28px • Bold
-        </ThemedText>
-      </View>
+        {wallet ? (
+          <View style={[styles.walletCard, { backgroundColor: theme.primary }]}>
+            <ThemedText type="h4" lightColor="#fff" darkColor="#fff">
+              Wallet Balance
+            </ThemedText>
+            <ThemedText type="h1" lightColor="#fff" darkColor="#fff" style={{ marginTop: Spacing.sm }}>
+              ${wallet.balance.toFixed(2)}
+            </ThemedText>
+            {wallet.pendingBalance > 0 ? (
+              <ThemedText type="caption" lightColor="#fff" darkColor="#fff" style={{ marginTop: Spacing.xs, opacity: 0.8 }}>
+                Pending: ${wallet.pendingBalance.toFixed(2)}
+              </ThemedText>
+            ) : null}
+          </View>
+        ) : null}
 
-      <View style={styles.section}>
-        <ThemedText type="h3">Heading 3</ThemedText>
-        <ThemedText type="small" style={styles.meta}>
-          24px • Semi-Bold
-        </ThemedText>
-      </View>
+        <View style={styles.menuSection}>
+          {user.role === "seller" ? renderMenuItem("briefcase", "Seller Dashboard", () => {}) : null}
+          {user.role === "admin" ? renderMenuItem("shield", "Admin Panel", () => {}) : null}
+          {renderMenuItem("settings", "Settings", () => {})}
+          {renderMenuItem("help-circle", "Help & Support", () => {})}
+        </View>
 
-      <View style={styles.section}>
-        <ThemedText type="h4">Heading 4</ThemedText>
-        <ThemedText type="small" style={styles.meta}>
-          20px • Semi-Bold
-        </ThemedText>
-      </View>
-
-      <View style={styles.section}>
-        <ThemedText type="body">
-          Body text - This is the default text style for paragraphs and general
-          content.
-        </ThemedText>
-        <ThemedText type="small" style={styles.meta}>
-          16px • Regular
-        </ThemedText>
-      </View>
-
-      <View style={styles.section}>
-        <ThemedText type="small">
-          Small text - Used for captions, labels, and secondary information.
-        </ThemedText>
-        <ThemedText type="small" style={styles.meta}>
-          14px • Regular
-        </ThemedText>
-      </View>
-
-      <View style={styles.section}>
-        <ThemedText type="link">Link text - Interactive elements</ThemedText>
-        <ThemedText type="small" style={styles.meta}>
-          16px • Regular • Colored
-        </ThemedText>
-      </View>
-
-      <Spacer height={Spacing["4xl"]} />
-
-      <View style={styles.fieldContainer}>
-        <ThemedText type="small" style={styles.label}>
-          Name
-        </ThemedText>
-        <TextInput
-          style={inputStyle}
-          value={name}
-          onChangeText={setName}
-          placeholder="Enter your name"
-          placeholderTextColor={isDark ? "#9BA1A6" : "#687076"}
-          autoCapitalize="words"
-          returnKeyType="next"
+        <PrimaryButton 
+          title="Sign Out" 
+          onPress={handleSignOut}
+          variant="outlined"
         />
       </View>
-
-      <Spacer height={Spacing.lg} />
-
-      <View style={styles.fieldContainer}>
-        <ThemedText type="small" style={styles.label}>
-          Email
-        </ThemedText>
-        <TextInput
-          style={inputStyle}
-          value={email}
-          onChangeText={setEmail}
-          placeholder="your.email@example.com"
-          placeholderTextColor={isDark ? "#9BA1A6" : "#687076"}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          returnKeyType="next"
-        />
-      </View>
-
-      <Spacer height={Spacing.lg} />
-
-      <View style={styles.fieldContainer}>
-        <ThemedText type="small" style={styles.label}>
-          Password
-        </ThemedText>
-        <TextInput
-          style={inputStyle}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Enter a password"
-          placeholderTextColor={isDark ? "#9BA1A6" : "#687076"}
-          secureTextEntry
-          autoCapitalize="none"
-          returnKeyType="next"
-        />
-      </View>
-
-      <Spacer height={Spacing.lg} />
-
-      <Button onPress={handleSubmit}>Submit Form</Button>
-
-      <Spacer height={Spacing["2xl"]} />
-
-      <ThemedText type="h3" style={styles.sectionTitle}>
-        Testing
-      </ThemedText>
-      <Spacer height={Spacing.md} />
-      <Button
-        onPress={() => navigation.navigate("Crash")}
-        style={styles.crashButton}
-      >
-        Crash App
-      </Button>
-    </ScreenKeyboardAwareScrollView>
+    </ScreenScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  section: {
-    marginBottom: Spacing["3xl"],
+  container: {
+    flex: 1,
   },
-  meta: {
-    opacity: 0.5,
-    marginTop: Spacing.sm,
-  },
-  fieldContainer: {
-    width: "100%",
-  },
-  label: {
-    marginBottom: Spacing.sm,
-    fontWeight: "600",
-    opacity: 0.8,
-  },
-  input: {
-    height: Spacing.inputHeight,
-    borderWidth: 0,
+  profileHeader: {
+    alignItems: "center",
+    padding: Spacing.xl,
     borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.lg,
-    fontSize: Typography.body.fontSize,
+    borderWidth: 1,
+    marginBottom: Spacing.xl,
   },
-  sectionTitle: {
-    marginTop: Spacing.xl,
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  crashButton: {
-    backgroundColor: "#FF3B30",
+  roleBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.xs,
+    marginTop: Spacing.md,
+  },
+  walletCard: {
+    padding: Spacing.xl,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.xl,
+  },
+  authPrompt: {
+    alignItems: "center",
+    padding: Spacing.xl,
+    borderRadius: BorderRadius.md,
+  },
+  menuSection: {
+    marginBottom: Spacing.xl,
+  },
+  menuItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginBottom: Spacing.sm,
+  },
+  menuItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 });
