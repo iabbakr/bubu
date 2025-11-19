@@ -128,8 +128,8 @@ export default function ProfileScreen() {
         ) : null}
 
         <View style={styles.menuSection}>
-          {user.role === "seller" ? renderMenuItem("briefcase", "Seller Dashboard", () => {}) : null}
-          {user.role === "admin" ? renderMenuItem("shield", "Admin Panel", () => {}) : null}
+          {user.role === "seller" ? renderMenuItem("briefcase", "Seller Dashboard", () => navigation.navigate("SellerDashboard" as never)) : null}
+          {user.role === "admin" ? renderMenuItem("shield", "Admin Panel", () => navigation.navigate("AdminPanel" as never)) : null}
           {renderMenuItem("settings", "Settings", () => {})}
           {renderMenuItem("help-circle", "Help & Support", () => {})}
         </View>

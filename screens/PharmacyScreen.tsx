@@ -1,15 +1,19 @@
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { ProductCard } from "../components/ProductCard";
 import { ScreenScrollView } from "../components/ScreenScrollView";
+import { useCart } from "../hooks/useCart";
 import { firebaseService, Product } from "../utils/firebase";
 import { useTheme } from "../hooks/useTheme";
-import { Spacing } from "../constants/theme";
+import { Spacing, BorderRadius } from "../constants/theme";
 
 export default function PharmacyScreen() {
   const { theme } = useTheme();
+  const navigation = useNavigation();
+  const { getTotalItems } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,9 +53,26 @@ export default function PharmacyScreen() {
     </View>
   );
 
+  const cartItemCount = getTotalItems();
+
   return (
     <ScreenScrollView>
       {renderHeader()}
+      
+      {cartItemCount > 0 ? (
+        <Pressable
+          style={[styles.fab, { backgroundColor: theme.primary }]}
+          onPress={() => navigation.navigate("Cart" as never)}
+        >
+          <Feather name="shopping-cart" size={24} color={theme.buttonText} />
+          <View style={[styles.badge, { backgroundColor: theme.error }]}>
+            <ThemedText style={styles.badgeText} lightColor="#fff" darkColor="#fff">
+              {cartItemCount}
+            </ThemedText>
+          </View>
+        </Pressable>
+      ) : null}
+
       {loading ? (
         <View style={styles.loading}>
           <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -66,7 +87,7 @@ export default function PharmacyScreen() {
             <View key={product.id} style={styles.gridItem}>
               <ProductCard 
                 product={product} 
-                onPress={() => {}}
+                onPress={() => navigation.navigate("ProductDetail" as never, { productId: product.id } as never)}
               />
             </View>
           ))}
@@ -84,6 +105,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     marginHorizontal: -Spacing.sm,
+    paddingBottom: 100,
   },
   gridItem: {
     width: "50%",
@@ -97,5 +119,35 @@ const styles = StyleSheet.create({
   loading: {
     alignItems: "center",
     paddingVertical: Spacing["5xl"],
+  },
+  fab: {
+    position: "absolute",
+    right: Spacing.lg,
+    bottom: 104,
+    width: Spacing.fabSize,
+    height: Spacing.fabSize,
+    borderRadius: Spacing.fabSize / 2,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 999,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
 });

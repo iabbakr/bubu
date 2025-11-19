@@ -9,6 +9,7 @@ import { StatusBar } from "expo-status-bar";
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/hooks/useAuth";
+import { CartProvider } from "@/hooks/useCart";
 import { initializeSampleData } from "@/utils/initData";
 
 export default function App() {
@@ -22,9 +23,11 @@ export default function App() {
         <GestureHandlerRootView style={styles.root}>
           <KeyboardProvider>
             <AuthProvider>
-              <NavigationContainer>
-                <MainTabNavigator />
-              </NavigationContainer>
+              <CartProvider>
+                <NavigationContainer>
+                  <MainTabNavigator />
+                </NavigationContainer>
+              </CartProvider>
             </AuthProvider>
             <StatusBar style="auto" />
           </KeyboardProvider>
