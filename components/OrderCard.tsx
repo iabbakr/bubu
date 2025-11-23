@@ -1,9 +1,9 @@
 import { View, StyleSheet, Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { Order } from "@/utils/firebase";
 import { ThemedText } from "./ThemedText";
-import { useTheme } from "@/hooks/useTheme";
-import { Spacing, BorderRadius } from "@/constants/theme";
+import { Order } from "../services/firebaseService";
+import { useTheme } from "../hooks/useTheme";
+import { Spacing, BorderRadius } from "../constants/theme";
 
 interface OrderCardProps {
   order: Order;
@@ -12,7 +12,7 @@ interface OrderCardProps {
 
 export function OrderCard({ order, onPress }: OrderCardProps) {
   const { theme } = useTheme();
-  
+
   const getStatusColor = () => {
     switch (order.status) {
       case "running":
@@ -21,6 +21,8 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
         return theme.success;
       case "cancelled":
         return theme.error;
+      default:
+        return theme.textSecondary;
     }
   };
 
@@ -32,6 +34,8 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
         return "check-circle";
       case "cancelled":
         return "x-circle";
+      default:
+        return "package";
     }
   };
 
@@ -39,38 +43,45 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
     <Pressable
       style={({ pressed }) => [
         styles.container,
-        { 
+        {
           backgroundColor: theme.cardBackground,
           borderColor: theme.border,
-          opacity: pressed ? 0.7 : 1
+          opacity: pressed ? 0.7 : 1,
         }
       ]}
       onPress={onPress}
     >
       <View style={styles.header}>
-        <ThemedText type="h4">Order #{order.id.slice(-6)}</ThemedText>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor() + "26" }]}>
-          <Feather name={getStatusIcon()} size={14} color={getStatusColor()} />
+        <View>
+          <ThemedText type="h4">Order #{order.id.slice(-6)}</ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
+            {new Date(order.createdAt).toLocaleDateString()}
+          </ThemedText>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor() + "20" }]}>
+          <Feather name={getStatusIcon() as any} size={14} color={getStatusColor()} />
           <ThemedText type="label" style={{ color: getStatusColor(), marginLeft: Spacing.xs }}>
             {order.status.toUpperCase()}
           </ThemedText>
         </View>
       </View>
-      
+
+      <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
       <View style={styles.content}>
         <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-          {order.products.length} item(s) • ${order.totalAmount.toFixed(2)}
+          {order.products.length} item(s)
         </ThemedText>
-        <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
-          {new Date(order.createdAt).toLocaleDateString()}
+        <ThemedText type="h3" style={{ color: theme.primary, marginTop: Spacing.xs }}>
+          ₦{order.totalAmount.toFixed(2)}
         </ThemedText>
       </View>
 
       <View style={styles.footer}>
-        <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-          Tap to view details
+        <Feather name="map-pin" size={14} color={theme.textSecondary} />
+        <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: Spacing.xs, flex: 1 }} numberOfLines={1}>
+          {order.deliveryAddress}
         </ThemedText>
-        <Feather name="chevron-right" size={16} color={theme.textSecondary} />
       </View>
     </Pressable>
   );
@@ -86,8 +97,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.md,
+    alignItems: "flex-start",
   },
   statusBadge: {
     flexDirection: "row",
@@ -96,12 +106,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.xs,
   },
+  divider: {
+    height: 1,
+    marginVertical: Spacing.md,
+  },
   content: {
     marginBottom: Spacing.md,
   },
   footer: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
   },
 });

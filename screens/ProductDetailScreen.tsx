@@ -5,7 +5,7 @@ import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenScrollView } from "../components/ScreenScrollView";
-import { firebaseService, Product } from "../utils/firebase";
+import { firebaseService, Product } from "../services/firebaseService";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
@@ -113,14 +113,14 @@ export default function ProductDetailScreen() {
 
           <View style={styles.priceRow}>
             <ThemedText type="h1" style={{ color: theme.primary }}>
-              ${discountedPrice.toFixed(2)}
+              ₦{discountedPrice.toFixed(2)}
             </ThemedText>
             {product.discount ? (
               <ThemedText 
                 type="h4" 
                 style={[styles.originalPrice, { color: theme.textSecondary }]}
               >
-                ${product.price.toFixed(2)}
+                ₦{product.price.toFixed(2)}
               </ThemedText>
             ) : null}
           </View>
@@ -169,7 +169,7 @@ export default function ProductDetailScreen() {
           </View>
 
           <PrimaryButton
-            title={`Add to Cart • $${(discountedPrice * quantity).toFixed(2)}`}
+            title={`Add to Cart • ₦${(discountedPrice * quantity).toFixed(2)}`}
             onPress={handleAddToCart}
             disabled={product.stock === 0}
           />

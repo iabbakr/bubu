@@ -7,6 +7,7 @@ interface PrimaryButtonProps {
   title: string;
   onPress: () => void;
   loading?: boolean;
+  style?: any; // Add this
   disabled?: boolean;
   variant?: "primary" | "secondary" | "outlined";
 }

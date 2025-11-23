@@ -5,7 +5,7 @@ import { useNavigation } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenScrollView } from "../components/ScreenScrollView";
-import { firebaseService, Wallet } from "../utils/firebase";
+import { firebaseService, Wallet } from "../services/firebaseService";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
@@ -50,7 +50,7 @@ export default function ProfileScreen() {
     );
   };
 
-  const renderMenuItem = (icon: string, title: string, onPress: () => void) => (
+  const renderMenuItem = (icon: string, title: string, onPress: () => void, showBadge?: boolean, badgeText?: string) => (
     <Pressable
       style={({ pressed }) => [
         styles.menuItem,
@@ -63,8 +63,20 @@ export default function ProfileScreen() {
       onPress={onPress}
     >
       <View style={styles.menuItemLeft}>
-        <Feather name={icon as any} size={20} color={theme.primary} />
-        <ThemedText style={{ marginLeft: Spacing.md }}>{title}</ThemedText>
+        <View style={[styles.menuIcon, { backgroundColor: theme.primary + "20" }]}>
+          <Feather name={icon as any} size={20} color={theme.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <ThemedText style={{ marginLeft: Spacing.md }}>{title}</ThemedText>
+          {showBadge && badgeText && (
+            <ThemedText 
+              type="caption" 
+              style={{ marginLeft: Spacing.md, color: theme.textSecondary, marginTop: 2 }}
+            >
+              {badgeText}
+            </ThemedText>
+          )}
+        </View>
       </View>
       <Feather name="chevron-right" size={20} color={theme.textSecondary} />
     </Pressable>
@@ -92,10 +104,12 @@ export default function ProfileScreen() {
   return (
     <ScreenScrollView>
       <View style={styles.container}>
+        {/* Profile Header */}
         <View style={[styles.profileHeader, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
             <ThemedText type="h1" lightColor="#fff" darkColor="#fff">
-              {user.name[0].toUpperCase()}
+              {user.name ? user.name[0].toUpperCase() : "U"}
+
             </ThemedText>
           </View>
           <ThemedText type="h2" style={{ marginTop: Spacing.lg }}>
@@ -105,40 +119,128 @@ export default function ProfileScreen() {
             {user.email}
           </ThemedText>
           <View style={[styles.roleBadge, { backgroundColor: theme.secondary + "33" }]}>
-            <ThemedText type="label" style={{ color: theme.primary }}>
+            <Feather 
+              name={
+                user.role === "admin" ? "shield" : 
+                user.role === "seller" ? "briefcase" : 
+                "shopping-cart"
+              } 
+              size={14} 
+              color={theme.primary} 
+            />
+            <ThemedText type="label" style={{ color: theme.primary, marginLeft: Spacing.xs }}>
               {user.role.toUpperCase()}
             </ThemedText>
           </View>
         </View>
 
-        {wallet ? (
-          <View style={[styles.walletCard, { backgroundColor: theme.primary }]}>
-            <ThemedText type="h4" lightColor="#fff" darkColor="#fff">
-              Wallet Balance
-            </ThemedText>
-            <ThemedText type="h1" lightColor="#fff" darkColor="#fff" style={{ marginTop: Spacing.sm }}>
-              ${wallet.balance.toFixed(2)}
-            </ThemedText>
-            {wallet.pendingBalance > 0 ? (
-              <ThemedText type="caption" lightColor="#fff" darkColor="#fff" style={{ marginTop: Spacing.xs, opacity: 0.8 }}>
-                Pending: ${wallet.pendingBalance.toFixed(2)}
-              </ThemedText>
-            ) : null}
-          </View>
-        ) : null}
+        {/* Wallet Preview Card */}
+        {wallet && (
+          <Pressable
+            style={[styles.walletPreviewCard, { backgroundColor: theme.primary }]}
+            onPress={() => navigation.navigate("Wallet" as never)}
+          >
+            <View style={styles.walletPreviewLeft}>
+              <Feather name="credit-card" size={24} color="#fff" />
+              <View style={{ marginLeft: Spacing.md }}>
+                <ThemedText type="caption" lightColor="#fff" darkColor="#fff" style={{ opacity: 0.9 }}>
+                  Wallet Balance
+                </ThemedText>
+                <ThemedText type="h2" lightColor="#fff" darkColor="#fff" style={{ marginTop: 4 }}>
+                  ₦{wallet.balance.toFixed(2)}
+                </ThemedText>
+                {wallet.pendingBalance > 0 && (
+                  <ThemedText type="caption" lightColor="#fff" darkColor="#fff" style={{ opacity: 0.8, marginTop: 2 }}>
+                    Pending: ₦{wallet.pendingBalance.toFixed(2)}
+                  </ThemedText>
+                )}
+              </View>
+            </View>
+            <Feather name="chevron-right" size={24} color="#fff" />
+          </Pressable>
+        )}
 
+        {/* Account Section */}
         <View style={styles.menuSection}>
-          {user.role === "seller" ? renderMenuItem("briefcase", "Seller Dashboard", () => navigation.navigate("SellerDashboard" as never)) : null}
-          {user.role === "admin" ? renderMenuItem("shield", "Admin Panel", () => navigation.navigate("AdminPanel" as never)) : null}
-          {renderMenuItem("settings", "Settings", () => {})}
-          {renderMenuItem("help-circle", "Help & Support", () => {})}
+          <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
+            Account
+          </ThemedText>
+          {renderMenuItem(
+            "user", 
+            "Account Information", 
+            () => navigation.navigate("AccountInfo" as never)
+          )}
+          {renderMenuItem(
+            "credit-card", 
+            "Wallet", 
+            () => navigation.navigate("Wallet" as never),
+            true,
+            wallet ? `₦${wallet.balance.toFixed(2)}` : "Loading..."
+          )}
+          {renderMenuItem("shopping-bag", "My Orders", () => {})}
+          {renderMenuItem("heart", "Wishlist", () => {})}
         </View>
 
+        {/* Business Section (for Sellers/Admins) */}
+        {(user.role === "seller" || user.role === "admin") && (
+          <View style={styles.menuSection}>
+            <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
+              Business
+            </ThemedText>
+            {user.role === "seller" && renderMenuItem(
+              "briefcase", 
+              "Seller Dashboard", 
+              () => navigation.navigate("SellerDashboard" as never)
+            )}
+            {user.role === "admin" && renderMenuItem(
+              "shield", 
+              "Admin Panel", 
+              () => navigation.navigate("AdminPanel" as never)
+            )}
+          </View>
+        )}
+
+        {/* Settings Section */}
+        <View style={styles.menuSection}>
+          <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
+            Settings
+          </ThemedText>
+          {renderMenuItem("bell", "Notifications", () => {})}
+          {renderMenuItem("lock", "Privacy & Security", () => {})}
+          {renderMenuItem("globe", "Language", () => {})}
+          {renderMenuItem("moon", "Theme", () => {})}
+        </View>
+
+        {/* Support Section */}
+        <View style={styles.menuSection}>
+          <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
+            Support
+          </ThemedText>
+          {renderMenuItem("help-circle", "Help Center", () => {})}
+          {renderMenuItem("message-circle", "Contact Support", () => {})}
+          {renderMenuItem("star", "Rate Us", () => {})}
+          {renderMenuItem("info", "About", () => {})}
+        </View>
+
+        {/* Sign Out Button */}
         <PrimaryButton 
           title="Sign Out" 
           onPress={handleSignOut}
           variant="outlined"
+          style={{ marginTop: Spacing.lg }}
         />
+
+        <ThemedText 
+          type="caption" 
+          style={{ 
+            textAlign: "center", 
+            color: theme.textSecondary, 
+            marginTop: Spacing.xl,
+            marginBottom: Spacing.xl 
+          }}
+        >
+          Version 1.0.0
+        </ThemedText>
       </View>
     </ScreenScrollView>
   );
@@ -163,15 +265,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   roleBadge: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.xs,
     marginTop: Spacing.md,
   },
-  walletCard: {
+  walletPreviewCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: Spacing.xl,
     borderRadius: BorderRadius.md,
     marginBottom: Spacing.xl,
+  },
+  walletPreviewLeft: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   authPrompt: {
     alignItems: "center",
@@ -192,6 +303,14 @@ const styles = StyleSheet.create({
   },
   menuItemLeft: {
     flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  menuIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.sm,
+    justifyContent: "center",
     alignItems: "center",
   },
 });

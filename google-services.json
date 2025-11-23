@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "10665273158",
+    "project_id": "bubu-eb6be",
+    "storage_bucket": "bubu-eb6be.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:10665273158:android:ef1fec281489b95ecf2747",
+        "android_client_info": {
+          "package_name": "com.devabu01.bubu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVjTEZZqrA1ItkjXQowMvAzEu9IWacpYo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

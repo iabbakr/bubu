@@ -1,20 +1,21 @@
 import { View, StyleSheet, Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "../components/ThemedText";
-import { ThemedView } from "../components/ThemedView";
 import { ScreenScrollView } from "../components/ScreenScrollView";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { ServicesStackParamList } from "@/navigation/ServicesStackNavigator";
 
 const services = [
-  { id: "airtime", name: "Airtime", icon: "phone" },
-  { id: "data", name: "Data", icon: "wifi" },
-  { id: "tv", name: "Cable TV", icon: "tv" },
-  { id: "electricity", name: "Electricity", icon: "zap" },
-  { id: "education", name: "Education", icon: "book" },
+  { id: "airtime", name: "Airtime", icon: "phone", screen: "Airtime" },
+  { id: "data", name: "Data", icon: "wifi", screen: "Data" },
+  { id: "electricity", name: "Electricity", icon: "zap", screen: "Electricity" },
 ];
 
 export default function ServicesScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<ServicesStackParamList>>();
   const { theme } = useTheme();
 
   const renderServiceCard = (service: typeof services[0]) => (
@@ -26,11 +27,15 @@ export default function ServicesScreen() {
           backgroundColor: theme.cardBackground,
           borderColor: theme.border,
           opacity: pressed ? 0.7 : 1,
-        }
+        },
       ]}
-      onPress={() => {}}
+      onPress={() =>
+        navigation.navigate(service.screen as keyof ServicesStackParamList)
+      }
     >
-      <View style={[styles.iconContainer, { backgroundColor: theme.secondary + "33" }]}>
+      <View
+        style={[styles.iconContainer, { backgroundColor: theme.secondary + "33" }]}
+      >
         <Feather name={service.icon as any} size={28} color={theme.primary} />
       </View>
       <ThemedText type="h4" style={styles.serviceName}>
@@ -43,18 +48,22 @@ export default function ServicesScreen() {
     <ScreenScrollView>
       <View style={styles.header}>
         <ThemedText type="h2">Bills & Utilities</ThemedText>
-        <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
+        >
           Pay your bills quickly and securely
         </ThemedText>
       </View>
 
-      <View style={styles.grid}>
-        {services.map(renderServiceCard)}
-      </View>
+      <View style={styles.grid}>{services.map(renderServiceCard)}</View>
 
       <View style={[styles.infoCard, { backgroundColor: theme.backgroundSecondary }]}>
         <Feather name="info" size={20} color={theme.info} />
-        <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: Spacing.md, flex: 1 }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.textSecondary, marginLeft: Spacing.md, flex: 1 }}
+        >
           All bill payments are processed instantly via VTPass
         </ThemedText>
       </View>

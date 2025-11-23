@@ -9,7 +9,7 @@ import { ScreenScrollView } from "../components/ScreenScrollView";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
-import { firebaseService } from "../utils/firebase";
+import { firebaseService } from "../services/firebaseService";
 import { Spacing, BorderRadius } from "../constants/theme";
 
 export default function CartScreen() {

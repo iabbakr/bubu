@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "../components/ThemedText";
 import { ScreenScrollView } from "../components/ScreenScrollView";
-import { firebaseService, User, Wallet, Order } from "../utils/firebase";
+import { firebaseService, User, Wallet, Order } from "../services/firebaseService";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";

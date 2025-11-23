@@ -1,6 +1,6 @@
 import { View, StyleSheet, Pressable, Image } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { Product } from "@/utils/firebase";
+import { Product } from "@/services/firebaseService";
 import { ThemedText } from "./ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
@@ -46,7 +46,7 @@ export function ProductCard({ product, onPress }: ProductCardProps) {
         </ThemedText>
         <View style={styles.priceRow}>
           <ThemedText type="h3" style={{ color: theme.primary }}>
-            ${discountedPrice.toFixed(2)}
+            ₦{discountedPrice.toFixed(2)}
           </ThemedText>
           {product.discount ? (
             <ThemedText 
