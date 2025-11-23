@@ -10,12 +10,9 @@ import MainTabNavigator from "@/navigation/MainTabNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/hooks/useAuth";
 import { CartProvider } from "@/hooks/useCart";
-import { initializeSampleData } from "@/services/initData";
 
 export default function App() {
-  useEffect(() => {
-    initializeSampleData();
-  }, []);
+  
 
   return (
   <ErrorBoundary>
