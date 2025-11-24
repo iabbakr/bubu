@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, StyleSheet, Pressable, Alert, TextInput, Modal } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { WebView } from "react-native-webview";
 import { ThemedText } from "../components/ThemedText";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenScrollView } from "../components/ScreenScrollView";
@@ -8,8 +9,63 @@ import { firebaseService, Wallet, Transaction } from "../services/firebaseServic
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
-import  Paystack  from "react-native-paystack-webview";
 
+// --- Custom Paystack WebView Component ---
+interface PaystackWebViewCustomProps {
+  amount: number;
+  email: string;
+  onSuccess: (res: any) => void;
+  onCancel: () => void;
+  paystackKey: string;
+}
+
+const PaystackWebViewCustom: React.FC<PaystackWebViewCustomProps> = ({
+  amount,
+  email,
+  onSuccess,
+  onCancel,
+  paystackKey,
+}) => {
+  const htmlContent = `
+    <html>
+      <head>
+        <script src="https://js.paystack.co/v1/inline.js"></script>
+      </head>
+      <body onload="initializePaystack()">
+        <script>
+          function initializePaystack() {
+            const handler = PaystackPop.setup({
+              key: '${paystackKey}',
+              email: '${email}',
+              amount: ${amount},
+              onClose: function() {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'cancelled' }));
+              },
+              callback: function(response) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'success', reference: response.reference }));
+              }
+            });
+            handler.openIframe();
+          }
+        </script>
+      </body>
+    </html>
+  `;
+
+  return (
+    <WebView
+      originWhitelist={["*"]}
+      source={{ html: htmlContent }}
+      onMessage={(event) => {
+        const data = JSON.parse(event.nativeEvent.data);
+        if (data.status === "success") onSuccess(data);
+        else onCancel();
+      }}
+    />
+  );
+};
+
+// --- Wallet Screen ---
 export default function WalletScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -21,7 +77,7 @@ export default function WalletScreen() {
   const [showPaystack, setShowPaystack] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
 
-  const PAYSTACK_PUBLIC_KEY = "pk_test_xxxxxxxxxxxxx"; // Replace with your Paystack public key
+  const PAYSTACK_PUBLIC_KEY = "PK_8237192dacef1e46482a9d295a7acb2231b67ba9a62"; // Replace with your key
 
   useEffect(() => {
     loadWallet();
@@ -29,7 +85,6 @@ export default function WalletScreen() {
 
   const loadWallet = async () => {
     if (!user) return;
-    
     setLoading(true);
     try {
       const data = await firebaseService.getWallet(user.uid);
@@ -48,29 +103,27 @@ export default function WalletScreen() {
       Alert.alert("Invalid Amount", "Please enter a valid amount");
       return;
     }
-
     if (amountNum < 100) {
       Alert.alert("Minimum Amount", "Minimum deposit is ₦100");
       return;
     }
-
+    setShowAddMoney(false);
     setShowPaystack(true);
   };
 
   const handlePaystackSuccess = async (response: any) => {
     if (!user || !wallet) return;
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum)) return;
 
     try {
-      const amountNum = parseFloat(amount);
-      
-      // Update wallet balance
-      const updatedWallet = {
+      const updatedWallet: Wallet = {
         ...wallet,
         balance: wallet.balance + amountNum,
         transactions: [
           {
             id: Date.now().toString(),
-            type: "credit" as const,
+            type: "credit",
             amount: amountNum,
             description: `Deposit via Paystack - Ref: ${response.reference}`,
             timestamp: Date.now(),
@@ -78,13 +131,10 @@ export default function WalletScreen() {
           ...wallet.transactions,
         ],
       };
-
       await firebaseService.updateWallet(updatedWallet);
       setWallet(updatedWallet);
       setShowPaystack(false);
-      setShowAddMoney(false);
       setAmount("");
-      
       Alert.alert("Success", `₦${amountNum.toFixed(2)} added to your wallet`);
     } catch (error) {
       console.error("Error updating wallet:", error);
@@ -94,23 +144,19 @@ export default function WalletScreen() {
 
   const handleWithdraw = async () => {
     if (!user || !wallet) return;
-
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
       Alert.alert("Invalid Amount", "Please enter a valid amount");
       return;
     }
-
     if (amountNum > wallet.balance) {
       Alert.alert("Insufficient Funds", "You don't have enough balance");
       return;
     }
-
     if (amountNum < 1000) {
       Alert.alert("Minimum Withdrawal", "Minimum withdrawal is ₦1,000");
       return;
     }
-
     Alert.alert(
       "Confirm Withdrawal",
       `Withdraw ₦${amountNum.toFixed(2)} to your bank account?`,
@@ -120,13 +166,13 @@ export default function WalletScreen() {
           text: "Confirm",
           onPress: async () => {
             try {
-              const updatedWallet = {
+              const updatedWallet: Wallet = {
                 ...wallet,
                 balance: wallet.balance - amountNum,
                 transactions: [
                   {
                     id: Date.now().toString(),
-                    type: "debit" as const,
+                    type: "debit",
                     amount: amountNum,
                     description: "Withdrawal to bank account",
                     timestamp: Date.now(),
@@ -134,14 +180,12 @@ export default function WalletScreen() {
                   ...wallet.transactions,
                 ],
               };
-
               await firebaseService.updateWallet(updatedWallet);
               setWallet(updatedWallet);
               setShowWithdraw(false);
               setAmount("");
-              
               Alert.alert(
-                "Success", 
+                "Success",
                 `₦${amountNum.toFixed(2)} withdrawal initiated. Funds will be transferred within 24 hours.`
               );
             } catch (error) {
@@ -156,20 +200,21 @@ export default function WalletScreen() {
 
   const renderTransaction = (transaction: Transaction) => {
     const isCredit = transaction.type === "credit";
-    
     return (
       <View
         key={transaction.id}
         style={[
           styles.transactionItem,
-          { backgroundColor: theme.cardBackground, borderColor: theme.border }
+          { backgroundColor: theme.cardBackground, borderColor: theme.border },
         ]}
       >
         <View style={styles.transactionLeft}>
-          <View style={[
-            styles.transactionIcon,
-            { backgroundColor: isCredit ? "#10b98120" : "#ef444420" }
-          ]}>
+          <View
+            style={[
+              styles.transactionIcon,
+              { backgroundColor: isCredit ? "#10b98120" : "#ef444420" },
+            ]}
+          >
             <Feather
               name={isCredit ? "arrow-down-left" : "arrow-up-right"}
               size={20}
@@ -224,7 +269,7 @@ export default function WalletScreen() {
   return (
     <ScreenScrollView>
       <View style={styles.container}>
-        {/* Wallet Balance Card */}
+        {/* Wallet Balance */}
         <View style={[styles.balanceCard, { backgroundColor: theme.primary }]}>
           <View style={styles.balanceHeader}>
             <ThemedText type="h4" lightColor="#fff" darkColor="#fff">
@@ -237,104 +282,38 @@ export default function WalletScreen() {
               onPress={() => setShowBalance(!showBalance)}
             />
           </View>
-          
-          <ThemedText
-            type="h1"
-            lightColor="#fff"
-            darkColor="#fff"
-            style={{ marginTop: Spacing.md, fontSize: 36 }}
-          >
+          <ThemedText type="h1" lightColor="#fff" darkColor="#fff" style={{ marginTop: Spacing.md, fontSize: 36 }}>
             {showBalance ? `₦${wallet.balance.toFixed(2)}` : "****"}
-            
           </ThemedText>
-
           {wallet.pendingBalance > 0 && (
             <View style={styles.pendingBalance}>
               <Feather name="clock" size={16} color="#fff" />
-              <ThemedText
-                type="caption"
-                lightColor="#fff"
-                darkColor="#fff"
-                style={{ marginLeft: Spacing.xs, opacity: 0.9 }}
-              >
+              <ThemedText type="caption" lightColor="#fff" darkColor="#fff" style={{ marginLeft: Spacing.xs, opacity: 0.9 }}>
                 Pending: ₦{wallet.pendingBalance.toFixed(2)}
               </ThemedText>
             </View>
           )}
-
-          {/* Action Buttons */}
           <View style={styles.actionButtons}>
-            <Pressable
-              style={[styles.actionButton, { backgroundColor: "#ffffff" }]}
-              onPress={() => setShowAddMoney(true)}
-            >
+            <Pressable style={[styles.actionButton, { backgroundColor: "#fff" }]} onPress={() => setShowAddMoney(true)}>
               <Feather name="plus" size={20} color={theme.primary} />
-              <ThemedText style={{ marginTop: Spacing.xs, color: theme.primary }}>
-                Add Money
-              </ThemedText>
+              <ThemedText style={{ marginTop: Spacing.xs, color: theme.primary }}>Add Money</ThemedText>
             </Pressable>
-
             {user.role === "seller" && (
-              <Pressable
-                style={[styles.actionButton, { backgroundColor: "#ffffff" }]}
-                onPress={() => {
-                  if (wallet.balance < 1000) {
-                    Alert.alert("Insufficient Balance", "Minimum withdrawal is ₦1,000");
-                    return;
-                  }
-                  setShowWithdraw(true);
-                }}
-              >
+              <Pressable style={[styles.actionButton, { backgroundColor: "#fff" }]} onPress={() => setShowWithdraw(true)}>
                 <Feather name="download" size={20} color={theme.primary} />
-                <ThemedText style={{ marginTop: Spacing.xs, color: theme.primary }}>
-                  Withdraw
-                </ThemedText>
+                <ThemedText style={{ marginTop: Spacing.xs, color: theme.primary }}>Withdraw</ThemedText>
               </Pressable>
             )}
           </View>
         </View>
 
-        {/* Quick Stats */}
-        <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-            <Feather name="trending-up" size={24} color="#10b981" />
-            <ThemedText type="h3" style={{ marginTop: Spacing.sm }}>
-              ₦{wallet.transactions
-                .filter(t => t.type === "credit")
-                .reduce((sum, t) => sum + t.amount, 0)
-                .toFixed(2)}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              Total Deposits
-            </ThemedText>
-          </View>
-
-          <View style={[styles.statCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-            <Feather name="trending-down" size={24} color="#ef4444" />
-            <ThemedText type="h3" style={{ marginTop: Spacing.sm }}>
-              ₦{wallet.transactions
-                .filter(t => t.type === "debit")
-                .reduce((sum, t) => sum + t.amount, 0)
-                .toFixed(2)}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              Total Withdrawals
-            </ThemedText>
-          </View>
-        </View>
-
         {/* Transaction History */}
         <View style={styles.transactionsSection}>
-          <ThemedText type="h3" style={{ marginBottom: Spacing.lg }}>
-            Transaction History
-          </ThemedText>
-
+          <ThemedText type="h3" style={{ marginBottom: Spacing.lg }}>Transaction History</ThemedText>
           {wallet.transactions.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: theme.backgroundSecondary }]}>
               <Feather name="inbox" size={48} color={theme.textSecondary} />
-              <ThemedText style={{ marginTop: Spacing.md, color: theme.textSecondary }}>
-                No transactions yet
-              </ThemedText>
+              <ThemedText style={{ marginTop: Spacing.md, color: theme.textSecondary }}>No transactions yet</ThemedText>
             </View>
           ) : (
             wallet.transactions.map(renderTransaction)
@@ -342,12 +321,7 @@ export default function WalletScreen() {
         </View>
 
         {/* Add Money Modal */}
-        <Modal
-          visible={showAddMoney}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowAddMoney(false)}
-        >
+        <Modal visible={showAddMoney} transparent animationType="slide" onRequestClose={() => setShowAddMoney(false)}>
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
               <View style={styles.modalHeader}>
@@ -356,11 +330,6 @@ export default function WalletScreen() {
                   <Feather name="x" size={24} color={theme.text} />
                 </Pressable>
               </View>
-
-              <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: Spacing.lg }}>
-                Minimum deposit: ₦100
-              </ThemedText>
-
               <View style={[styles.inputContainer, { borderColor: theme.border }]}>
                 <ThemedText type="h2">₦</ThemedText>
                 <TextInput
@@ -372,23 +341,13 @@ export default function WalletScreen() {
                   placeholderTextColor={theme.textSecondary}
                 />
               </View>
-
-              <PrimaryButton
-                title="Continue to Payment"
-                onPress={handleAddMoney}
-                style={{ marginTop: Spacing.xl }}
-              />
+              <PrimaryButton title="Continue to Payment" onPress={handleAddMoney} style={{ marginTop: Spacing.xl }} />
             </View>
           </View>
         </Modal>
 
         {/* Withdraw Modal */}
-        <Modal
-          visible={showWithdraw}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowWithdraw(false)}
-        >
+        <Modal visible={showWithdraw} transparent animationType="slide" onRequestClose={() => setShowWithdraw(false)}>
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
               <View style={styles.modalHeader}>
@@ -397,12 +356,6 @@ export default function WalletScreen() {
                   <Feather name="x" size={24} color={theme.text} />
                 </Pressable>
               </View>
-
-              <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: Spacing.lg }}>
-                Available balance: ₦{wallet.balance.toFixed(2)}
-                {"\n"}Minimum withdrawal: ₦1,000
-              </ThemedText>
-
               <View style={[styles.inputContainer, { borderColor: theme.border }]}>
                 <ThemedText type="h2">₦</ThemedText>
                 <TextInput
@@ -414,141 +367,47 @@ export default function WalletScreen() {
                   placeholderTextColor={theme.textSecondary}
                 />
               </View>
-
-              <PrimaryButton
-                title="Withdraw to Bank"
-                onPress={handleWithdraw}
-                style={{ marginTop: Spacing.xl }}
-              />
+              <PrimaryButton title="Withdraw to Bank" onPress={handleWithdraw} style={{ marginTop: Spacing.xl }} />
             </View>
           </View>
         </Modal>
 
-        {/* Paystack Webview */}
-        {showPaystack && (
-          <Paystack
-            paystackKey={PAYSTACK_PUBLIC_KEY}
-            amount={parseFloat(amount) * 100}
-            billingEmail={user.email}
-            billingName={user.name}
-            channels={["card", "bank", "ussd", "bank_transfer"]}
-            onCancel={() => {
-              setShowPaystack(false);
-              Alert.alert("Cancelled", "Payment was cancelled");
-            }}
-            onSuccess={handlePaystackSuccess}
-            autoStart={true}
-          />
-        )}
+        {/* Paystack WebView Modal */}
+        <Modal visible={showPaystack} animationType="slide">
+          <View style={{ flex: 1, backgroundColor: "#fff" }}>
+            <PaystackWebViewCustom
+              paystackKey={PAYSTACK_PUBLIC_KEY}
+              amount={parseFloat(amount) * 100}
+              email={user.email}
+              onCancel={() => {
+                setShowPaystack(false);
+                Alert.alert("Cancelled", "Payment was cancelled");
+              }}
+              onSuccess={handlePaystackSuccess}
+            />
+          </View>
+        </Modal>
       </View>
     </ScreenScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  balanceCard: {
-    padding: Spacing.xl,
-    borderRadius: BorderRadius.lg,
-    marginBottom: Spacing.xl,
-  },
-  balanceHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  pendingBalance: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: Spacing.sm,
-  },
-  actionButtons: {
-    flexDirection: "row",
-    gap: Spacing.md,
-    marginTop: Spacing.xl,
-  },
-  actionButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-  },
-  statsContainer: {
-    flexDirection: "row",
-    gap: Spacing.md,
-    marginBottom: Spacing.xl,
-  },
-  statCard: {
-    flex: 1,
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    alignItems: "center",
-  },
-  transactionsSection: {
-    marginBottom: Spacing.xl,
-  },
-  transactionItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    marginBottom: Spacing.sm,
-  },
-  transactionLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  transactionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.sm,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  transactionDetails: {
-    marginLeft: Spacing.md,
-    flex: 1,
-  },
-  emptyState: {
-    alignItems: "center",
-    padding: Spacing["3xl"],
-    borderRadius: BorderRadius.md,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    borderTopLeftRadius: BorderRadius.lg,
-    borderTopRightRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    minHeight: 300,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.lg,
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 2,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  amountInput: {
-    flex: 1,
-    fontSize: 32,
-    fontWeight: "700",
-    marginLeft: Spacing.sm,
-  },
+  container: { flex: 1 },
+  balanceCard: { padding: Spacing.xl, borderRadius: BorderRadius.lg, marginBottom: Spacing.xl },
+  balanceHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  pendingBalance: { flexDirection: "row", alignItems: "center", marginTop: Spacing.sm },
+  actionButtons: { flexDirection: "row", gap: Spacing.md, marginTop: Spacing.xl },
+  actionButton: { flex: 1, alignItems: "center", paddingVertical: Spacing.md, borderRadius: BorderRadius.md },
+  transactionsSection: { marginBottom: Spacing.xl },
+  transactionItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: Spacing.lg, borderRadius: BorderRadius.md, borderWidth: 1, marginBottom: Spacing.sm },
+  transactionLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
+  transactionIcon: { width: 40, height: 40, borderRadius: BorderRadius.sm, justifyContent: "center", alignItems: "center" },
+  transactionDetails: { marginLeft: Spacing.md, flex: 1 },
+  emptyState: { alignItems: "center", padding: Spacing["3xl"], borderRadius: BorderRadius.md },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: "flex-end" },
+  modalContent: { borderTopLeftRadius: BorderRadius.lg, borderTopRightRadius: BorderRadius.lg, padding: Spacing.xl, minHeight: 300 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: Spacing.lg },
+  inputContainer: { flexDirection: "row", alignItems: "center", borderWidth: 2, borderRadius: BorderRadius.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
+  amountInput: { flex: 1, fontSize: 32, fontWeight: "700", marginLeft: Spacing.sm },
 });

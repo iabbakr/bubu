@@ -1,229 +1,232 @@
-import { useEffect, useState, useRef } from "react";
-import {
-  View,
-  FlatList,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-} from "react-native";
-import { useRoute } from "@react-navigation/native";
-import { firebaseService, DisputeMessage, Order } from "../services/firebaseService";
+import { View, StyleSheet, FlatList, Pressable, RefreshControl } from "react-native";
+import { useState, useEffect } from "react";
+import { Feather } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
-import { auth } from "../lib/firebase";
+import { ScreenScrollView } from "../components/ScreenScrollView";
+import { firebaseService, Order } from "../services/firebaseService";
+import { useAuth } from "../hooks/useAuth";
+import { useTheme } from "../hooks/useTheme";
+import { Spacing, BorderRadius } from "../constants/theme";
 
-export default function AdminDisputeScreen() {
-  const route = useRoute();
-  const { orderId } = route.params as { orderId: string };
+export default function AdminDisputesScreen() {
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const navigation = useNavigation<any>();
 
-  const [messages, setMessages] = useState<DisputeMessage[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [order, setOrder] = useState<Order | null>(null);
+  const [disputes, setDisputes] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const flatListRef = useRef<FlatList<DisputeMessage>>(null);
-
-  // Listen for live chat messages
   useEffect(() => {
-    const unsub = firebaseService.listenToDisputeMessages(orderId, (msgs) => {
-      setMessages(msgs);
+    if (user?.role === "admin") {
+      loadDisputes();
+    }
+  }, [user]);
 
-      // Auto-scroll to bottom
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    });
-    return unsub;
-  }, [orderId]);
-
-  // Load order details
-  useEffect(() => {
-    const loadOrder = async () => {
-      const o = await firebaseService.getOrder(orderId);
-      setOrder(o);
-    };
-    loadOrder();
-  }, [orderId]);
-
-  const sendMessage = async () => {
-    if (!newMessage.trim()) return;
-
-    const adminId = auth.currentUser?.uid;
-    if (!adminId) return;
-
-    await firebaseService.sendDisputeMessage(orderId, adminId, "admin", newMessage);
-    setNewMessage("");
+  const loadDisputes = async () => {
+    try {
+      const orders = await firebaseService.getOrders("", "admin");
+      const openDisputes = orders.filter(o => o.disputeStatus === "open");
+      setDisputes(openDisputes);
+    } catch (error) {
+      console.error("Error loading disputes:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  const resolveDispute = (resolution: "refund_buyer" | "release_to_seller") => {
-    if (!order) return;
-
-    Alert.alert(
-      "Resolve Dispute",
-      resolution === "refund_buyer"
-        ? "Refund payment to the buyer?"
-        : "Release payment to the seller?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Confirm",
-          onPress: async () => {
-            try {
-              const adminId = auth.currentUser?.uid;
-              if (!adminId) return;
-
-              await firebaseService.resolveDispute(orderId, adminId, resolution, "Resolved via chat screen");
-              Alert.alert("Success", "Dispute resolved successfully");
-              const updatedOrder = await firebaseService.getOrder(orderId);
-              setOrder(updatedOrder);
-            } catch (err: any) {
-              Alert.alert("Error", err.message || "Failed to resolve dispute");
-            }
-          },
-        },
-      ]
-    );
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadDisputes();
   };
 
-  const renderMessage = ({ item }: { item: DisputeMessage }) => {
-    const isAdmin = item.senderRole === "admin";
-
-    return (
-      <View
-        style={[
-          styles.messageContainer,
-          isAdmin ? styles.adminContainer : styles.userContainer,
-        ]}
-      >
-        <View style={[styles.bubble, isAdmin ? styles.adminBubble : styles.userBubble]}>
-          <ThemedText style={isAdmin ? styles.adminText : styles.userText}>
-            {item.message}
+  const renderDisputeCard = ({ item }: { item: Order }) => (
+    <Pressable
+      style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+      onPress={() => navigation.navigate("DisputeChatScreen", { orderId: item.id })}
+    >
+      <View style={styles.cardHeader}>
+        <View style={{ flex: 1 }}>
+          <ThemedText type="h4">Order #{item.id.slice(-6)}</ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+            Opened {new Date(item.updatedAt).toLocaleDateString()}
           </ThemedText>
-          <ThemedText style={styles.timestamp}>
-            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </View>
+        <View style={[styles.urgentBadge, { backgroundColor: theme.error + "20" }]}>
+          <Feather name="alert-circle" size={16} color={theme.error} />
+          <ThemedText type="caption" style={{ color: theme.error, marginLeft: 4, fontWeight: "600" }}>
+            URGENT
           </ThemedText>
         </View>
       </View>
+
+      <View style={styles.disputeInfo}>
+        <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+          Dispute Details:
+        </ThemedText>
+        <ThemedText numberOfLines={2} style={{ marginTop: 4 }}>
+          {item.disputeDetails || "No details provided"}
+        </ThemedText>
+      </View>
+
+      <View style={styles.orderInfo}>
+        <View style={styles.infoRow}>
+          <Feather name="package" size={14} color={theme.textSecondary} />
+          <ThemedText type="caption" style={{ marginLeft: 6, color: theme.textSecondary }}>
+            {item.products.length} item(s)
+          </ThemedText>
+        </View>
+        <View style={styles.infoRow}>
+          <Feather name="dollar-sign" size={14} color={theme.textSecondary} />
+          <ThemedText type="caption" style={{ marginLeft: 6, color: theme.textSecondary }}>
+            ₦{item.totalAmount.toLocaleString()}
+          </ThemedText>
+        </View>
+      </View>
+
+      <View style={styles.actionRow}>
+        <ThemedText style={{ color: theme.primary, fontWeight: "600" }}>
+          Review & Resolve
+        </ThemedText>
+        <Feather name="chevron-right" size={20} color={theme.primary} />
+      </View>
+    </Pressable>
+  );
+
+  const renderEmpty = () => (
+    <View style={styles.empty}>
+      <Feather name="check-circle" size={64} color={theme.success} />
+      <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
+        No Open Disputes
+      </ThemedText>
+      <ThemedText type="caption" style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
+        All disputes have been resolved
+      </ThemedText>
+    </View>
+  );
+
+  if (!user || user.role !== "admin") {
+    return (
+      <ScreenScrollView>
+        <View style={styles.empty}>
+          <Feather name="alert-circle" size={64} color={theme.textSecondary} />
+          <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
+            Access Denied
+          </ThemedText>
+          <ThemedText type="caption" style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
+            This page is only available to administrators
+          </ThemedText>
+        </View>
+      </ScreenScrollView>
     );
-  };
+  }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={renderMessage}
-        contentContainerStyle={{ padding: 15, paddingBottom: 80 }}
-      />
-
-      {order?.disputeStatus === "open" && (
-        <View style={styles.resolutionButtons}>
-          <Pressable
-            style={[styles.resolveBtn, { backgroundColor: "#dc3545" }]}
-            onPress={() => resolveDispute("refund_buyer")}
-          >
-            <ThemedText style={{ color: "white" }}>Refund Buyer</ThemedText>
-          </Pressable>
-          <Pressable
-            style={[styles.resolveBtn, { backgroundColor: "#28a745" }]}
-            onPress={() => resolveDispute("release_to_seller")}
-          >
-            <ThemedText style={{ color: "white" }}>Release to Seller</ThemedText>
-          </Pressable>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={styles.header}>
+        <ThemedText type="h2">Open Disputes</ThemedText>
+        <View style={[styles.badge, { backgroundColor: theme.error + "20" }]}>
+          <ThemedText type="h4" style={{ color: theme.error }}>
+            {disputes.length}
+          </ThemedText>
         </View>
-      )}
-
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type a message..."
-          value={newMessage}
-          onChangeText={setNewMessage}
-        />
-        <Pressable style={styles.sendBtn} onPress={sendMessage}>
-          <ThemedText style={{ color: "white" }}>Send</ThemedText>
-        </Pressable>
       </View>
-    </KeyboardAvoidingView>
+
+      {loading ? (
+        <View style={styles.loading}>
+          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+            Loading disputes...
+          </ThemedText>
+        </View>
+      ) : (
+        <FlatList
+          data={disputes}
+          renderItem={renderDisputeCard}
+          keyExtractor={item => item.id}
+          ListEmptyComponent={renderEmpty}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.primary}
+            />
+          }
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  messageContainer: {
-    marginVertical: 5,
+  container: { flex: 1 },
+  header: {
     flexDirection: "row",
-    maxWidth: "80%",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: Spacing.lg,
   },
-  adminContainer: {
-    alignSelf: "flex-end",
-  },
-  userContainer: {
-    alignSelf: "flex-start",
-  },
-  bubble: {
-    borderRadius: 15,
-    padding: 10,
-  },
-  adminBubble: {
-    backgroundColor: "#007bff",
-  },
-  userBubble: {
-    backgroundColor: "#f1f1f1",
-  },
-  adminText: {
-    color: "white",
-  },
-  userText: {
-    color: "black",
-  },
-  timestamp: {
-    fontSize: 10,
-    marginTop: 3,
-    opacity: 0.6,
-    alignSelf: "flex-end",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    padding: 10,
-    borderTopWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
-    position: "absolute",
-    bottom: 0,
-    width: "100%",
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    marginRight: 10,
-  },
-  sendBtn: {
-    backgroundColor: "#007bff",
-    borderRadius: 25,
-    paddingHorizontal: 20,
+  badge: {
+    minWidth: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: Spacing.sm,
   },
-  resolutionButtons: {
+  list: { padding: Spacing.lg, paddingTop: 0 },
+  card: {
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  cardHeader: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    marginHorizontal: 10,
-    marginBottom: 60,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: Spacing.md,
   },
-  resolveBtn: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 25,
-    marginHorizontal: 5,
+  urgentBadge: {
+    flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.xs,
+  },
+  disputeInfo: {
+    padding: Spacing.md,
+    backgroundColor: "#f9f9f9",
+    borderRadius: BorderRadius.sm,
+    marginBottom: Spacing.md,
+  },
+  orderInfo: {
+    flexDirection: "row",
+    gap: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  actionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e5e5",
+  },
+  empty: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing["5xl"],
+  },
+  loading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

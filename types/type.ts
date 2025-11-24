@@ -2,8 +2,11 @@ import { Product } from "../services/firebaseService";
 
 export type SellerStackParamList = {
   SellerDashboard: undefined;
-  AddProductScreen: undefined;
+  AddProduct: undefined;
   EditProduct: { product: Product };
+  MyProducts: undefined;  // <-- add this
+  MyOrders: undefined;    // <-- add this
+  OrderDetail: { orderId: string };      // <-- add this
 };
 
 

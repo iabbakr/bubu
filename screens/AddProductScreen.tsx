@@ -1,3 +1,5 @@
+// screens/AddProductScreen.tsx
+
 import { useState } from "react";
 import {
   View,
@@ -6,10 +8,8 @@ import {
   Pressable,
   Image,
   Alert,
-  Platform,
-  Modal,
-  Text,
   ScrollView,
+  Modal,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
@@ -21,6 +21,7 @@ import { firebaseService } from "../services/firebaseService";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { uploadImageToCloudinary } from "../lib/cloudinary";
+import { Spacing, BorderRadius } from "../constants/theme";
 
 export default function AddProductScreen() {
   const { theme } = useTheme();
@@ -28,70 +29,65 @@ export default function AddProductScreen() {
   const navigation = useNavigation();
 
   const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
+  const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [brand, setBrand] = useState("");
+  const [weight, setWeight] = useState("");
+  const [discount, setDiscount] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [requiresPrescription, setRequiresPrescription] = useState(false);
   const [image, setImage] = useState<string | null>(null);
   const [subcategory, setSubcategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
 
-  // Subcategories mapping
+  const isPharmacy = user?.sellerCategory === "pharmacy";
+  const isSupermarket = user?.sellerCategory === "supermarket";
+
+  // Subcategories
   const subcategories = {
-    pharmacy: ["Tablet", "Syrup", "Capsule", "Ointment", "Drops"],
-    supermarket: ["Beverages", "Snacks", "Vegetables", "Fruits", "Dairy", "Frozen Foods"],
+    pharmacy: ["Tablet", "Syrup", "Capsule", "Ointment", "Drops", "Injection", "Cream", "Powder"],
+    supermarket: ["Beverages", "Snacks", "Vegetables", "Fruits", "Dairy", "Frozen Foods", "Canned Goods", "Condiments"],
   };
 
-  // PICK IMAGE
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      quality: 0.7,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [1, 1],
     });
     if (!result.canceled) setImage(result.assets[0].uri);
   };
 
-  // UPLOAD IMAGE TO CLOUDINARY
-  const uploadImage = async () => {
+  const uploadImage = async (): Promise<string> => {
     if (!image) return "";
     try {
       return await uploadImageToCloudinary(image, "products");
     } catch (err) {
-      console.error(err);
-      Alert.alert("Upload Error", "Failed to upload image");
-      return "";
+      Alert.alert("Upload Failed", "Could not upload image. Try again.");
+      throw err;
     }
   };
 
-  // SUBMIT PRODUCT
   const handleSubmit = async () => {
-    if (!user) return;
+    if (!user?.sellerCategory || !user.location) {
+      Alert.alert("Error", "Please complete your profile with location and seller type first.");
+      return;
+    }
 
     const trimmedName = name.trim();
-    const trimmedDesc = desc.trim();
     const priceNum = Number(price);
     const stockNum = Number(stock);
+    const discountNum = discount ? Number(discount) : 0;
 
-    if (!trimmedName || !trimmedDesc || !price || !stock || !image || !subcategory) {
-      Alert.alert(
-        "Missing Fields",
-        "Please fill all fields, upload an image, and select a subcategory."
-      );
+    if (!trimmedName || !description.trim() || !price || !stock || !image || !subcategory) {
+      Alert.alert("Missing Fields", "Please fill all required fields and upload an image.");
       return;
     }
 
-    if (priceNum <= 0 || stockNum < 0) {
-      Alert.alert("Invalid Input", "Price must be > 0 and stock ≥ 0");
-      return;
-    }
-
-    if (!user.location) {
-      Alert.alert("Error", "Please update your profile with a location first");
-      return;
-    }
-
-    if (!user.sellerCategory) {
-      Alert.alert("Error", "Seller category is not set in your profile.");
+    if (priceNum <= 0 || stockNum < 0 || discountNum < 0 || discountNum > 90) {
+      Alert.alert("Invalid Input", "Check price, stock, and discount values.");
       return;
     }
 
@@ -101,7 +97,7 @@ export default function AddProductScreen() {
 
       await firebaseService.createProduct({
         name: trimmedName,
-        description: trimmedDesc,
+        description: description.trim(),
         price: priceNum,
         stock: stockNum,
         category: user.sellerCategory,
@@ -109,123 +105,178 @@ export default function AddProductScreen() {
         imageUrl,
         sellerId: user.uid,
         location: user.location,
+
+        // Rich fields
+        brand: brand.trim() || undefined,
+        weight: weight.trim() || undefined,
+        discount: discountNum || undefined,
+        expiryDate: expiryDate.trim() || undefined,
+        isPrescriptionRequired: isPharmacy ? requiresPrescription : undefined,
+        isFeatured: false,
+        tags: [],
       });
 
-      Alert.alert("Success", "Product added!");
-      navigation.goBack();
+      Alert.alert("Success!", "Product added successfully", [{ text: "OK", onPress: () => navigation.goBack() }]);
     } catch (err) {
       console.error(err);
-      Alert.alert("Error", "Failed to add product");
+      Alert.alert("Error", "Failed to add product. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  // PICKER MODAL HANDLER
   const openPicker = () => setPickerVisible(true);
-  const selectSubcategory = (subcat: string) => {
-    setSubcategory(subcat);
+  const selectSubcategory = (cat: string) => {
+    setSubcategory(cat);
     setPickerVisible(false);
   };
 
   return (
     <ScreenScrollView>
-      <View style={{ padding: 20 }}>
-        <ThemedText type="h2" style={{ marginBottom: 20 }}>
+      <View style={styles.container}>
+        <ThemedText type="h2" style={styles.title}>
           Add New Product
         </ThemedText>
 
+        {/* Image Picker */}
         <Pressable onPress={pickImage} style={styles.imagePicker}>
           {image ? (
             <Image source={{ uri: image }} style={styles.imagePreview} />
           ) : (
-            <>
-              <Feather name="image" size={36} color={theme.textSecondary} />
-              <ThemedText type="caption" style={{ marginTop: 8 }}>
-                Upload product image
+            <View style={styles.placeholder}>
+              <Feather name="image" size={48} color={theme.textSecondary} />
+              <ThemedText type="caption" style={styles.placeholderText}>
+                Tap to upload product image
               </ThemedText>
-            </>
+            </View>
           )}
         </Pressable>
 
+        {/* Common Fields */}
+        <ThemedText type="h4" style={styles.sectionTitle}>Basic Info</ThemedText>
+
         <TextInput
-          placeholder="Product Name"
-          placeholderTextColor={theme.textSecondary}
-          style={[styles.input, { borderColor: theme.border, color: theme.text }]}
+          placeholder="Product Name *"
           value={name}
           onChangeText={setName}
+          style={styles.input}
         />
 
         <TextInput
-          placeholder="Description"
-          placeholderTextColor={theme.textSecondary}
-          style={[styles.input, { borderColor: theme.border, color: theme.text }]}
-          value={desc}
-          onChangeText={setDesc}
+          placeholder="Description *"
+          value={description}
+          onChangeText={setDescription}
+          style={[styles.input, styles.multiline]}
           multiline
+          numberOfLines={3}
+        />
+
+        <View style={styles.row}>
+          <TextInput
+            placeholder="Price (₦) *"
+            value={price}
+            onChangeText={setPrice}
+            keyboardType="numeric"
+            style={[styles.input, styles.halfInput]}
+          />
+          <TextInput
+            placeholder="Stock *"
+            value={stock}
+            onChangeText={setStock}
+            keyboardType="numeric"
+            style={[styles.input, styles.halfInput]}
+          />
+        </View>
+
+        {/* Brand & Weight */}
+        <ThemedText type="h4" style={styles.sectionTitle}>Details</ThemedText>
+
+        <TextInput
+          placeholder="Brand (e.g., Panadol, Coca-Cola)"
+          value={brand}
+          onChangeText={setBrand}
+          style={styles.input}
         />
 
         <TextInput
-          placeholder="Price (NGN)"
-          keyboardType="numeric"
-          placeholderTextColor={theme.textSecondary}
-          style={[styles.input, { borderColor: theme.border, color: theme.text }]}
-          value={price}
-          onChangeText={setPrice}
+          placeholder="Size / Weight (e.g., 500g, 1L, 30 tablets)"
+          value={weight}
+          onChangeText={setWeight}
+          style={styles.input}
         />
 
         <TextInput
-          placeholder="Stock quantity"
+          placeholder="Discount % (optional)"
+          value={discount}
+          onChangeText={setDiscount}
           keyboardType="numeric"
-          placeholderTextColor={theme.textSecondary}
-          style={[styles.input, { borderColor: theme.border, color: theme.text }]}
-          value={stock}
-          onChangeText={setStock}
+          style={styles.input}
         />
 
-        {/* SUBCATEGORY BUTTON */}
-        {user?.sellerCategory && (
-          <View style={{ marginBottom: 15 }}>
-            <ThemedText type="h4" style={{ marginBottom: 8 }}>
-              Subcategory
-            </ThemedText>
+        {/* Pharmacy Only Fields */}
+        {isPharmacy && (
+          <>
+            <TextInput
+              placeholder="Expiry Date (YYYY-MM-DD)"
+              value={expiryDate}
+              onChangeText={setExpiryDate}
+              style={styles.input}
+            />
 
-            <Pressable
-              style={[
-                styles.subcategoryBtn,
-                { borderColor: theme.border, backgroundColor: subcategory ? theme.primary : "transparent" },
-              ]}
-              onPress={openPicker}
-            >
-              <ThemedText style={{ color: subcategory ? "#fff" : theme.text }}>
-                {subcategory || "Select subcategory..."}
-              </ThemedText>
-            </Pressable>
-
-            <Modal visible={pickerVisible} transparent animationType="slide">
-              <Pressable style={styles.modalOverlay} onPress={() => setPickerVisible(false)}>
-                <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-                  <ScrollView>
-                    {subcategories[user.sellerCategory].map((subcat) => (
-                      <Pressable
-                        key={subcat}
-                        style={styles.modalItem}
-                        onPress={() => selectSubcategory(subcat)}
-                      >
-                        <Text style={{ color: theme.text, fontSize: 16 }}>{subcat}</Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
+            <View style={styles.checkboxRow}>
+              <Pressable
+                style={[styles.checkbox, requiresPrescription && styles.checkboxChecked]}
+                onPress={() => setRequiresPrescription(!requiresPrescription)}
+              >
+                {requiresPrescription && <Feather name="check" size={18} color="#fff" />}
               </Pressable>
-            </Modal>
-          </View>
+              <ThemedText style={styles.checkboxLabel}>
+                Requires Prescription
+              </ThemedText>
+            </View>
+          </>
         )}
 
+        {/* Subcategory */}
+        <ThemedText type="h4" style={styles.sectionTitle}>Category</ThemedText>
+
+        <Pressable
+          style={[styles.subcategoryBtn, { backgroundColor: subcategory ? theme.primary + "20" : theme.cardBackground }]}
+          onPress={openPicker}
+        >
+          <ThemedText style={{ color: subcategory ? theme.primary : theme.textSecondary, fontWeight: "600" }}>
+            {subcategory || "Select subcategory..."}
+          </ThemedText>
+          <Feather name="chevron-down" size={20} color={theme.textSecondary} />
+        </Pressable>
+
+        {/* Subcategory Picker Modal */}
+        <Modal visible={pickerVisible} transparent animationType="fade">
+          <Pressable style={styles.modalOverlay} onPress={() => setPickerVisible(false)}>
+            <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+              <ThemedText type="h3" style={{ marginBottom: 16, textAlign: "center" }}>
+                Select Subcategory
+              </ThemedText>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {subcategories[user?.sellerCategory || "supermarket"].map((cat) => (
+                  <Pressable
+                    key={cat}
+                    style={styles.modalItem}
+                    onPress={() => selectSubcategory(cat)}
+                  >
+                    <ThemedText style={{ fontSize: 16, paddingVertical: 8 }}>{cat}</ThemedText>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Modal>
+
         <PrimaryButton
-          title={loading ? "Saving..." : "Add Product"}
+          title={loading ? "Adding Product..." : "Add Product"}
           onPress={handleSubmit}
           disabled={loading}
+          style={{ marginTop: 30 }}
         />
       </View>
     </ScreenScrollView>
@@ -233,46 +284,76 @@ export default function AddProductScreen() {
 }
 
 const styles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 15,
-  },
+  container: { padding: Spacing.xl },
+  title: { marginBottom: Spacing.xl, textAlign: "center" },
+  sectionTitle: { marginTop: Spacing.xl, marginBottom: Spacing.md, fontWeight: "600" },
   imagePicker: {
-    borderWidth: 1,
-    borderRadius: 10,
-    height: 180,
-    alignItems: "center",
+    height: 200,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: "#ddd",
+    borderStyle: "dashed",
     justifyContent: "center",
-    marginBottom: 20,
+    alignItems: "center",
+    marginBottom: Spacing.xl,
     overflow: "hidden",
   },
-  imagePreview: {
-    width: "100%",
-    height: "100%",
-  },
-  subcategoryBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 15,
+  imagePreview: { width: "100%", height: "100%", borderRadius: BorderRadius.lg },
+  placeholder: { alignItems: "center" },
+  placeholderText: { marginTop: Spacing.sm, color: "#888" },
+  input: {
     borderWidth: 1,
-    borderRadius: 10,
+    borderColor: "#ddd",
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    backgroundColor: "#fafafa",
+  },
+  multiline: { height: 100, textAlignVertical: "top" },
+  row: { flexDirection: "row", gap: Spacing.md },
+  halfInput: { flex: 1 },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.lg,
+  },
+  checkbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "#007AFF",
     justifyContent: "center",
+    alignItems: "center",
+    marginRight: Spacing.md,
+  },
+  checkboxChecked: { backgroundColor: "#007AFF" },
+  checkboxLabel: { fontSize: 16 },
+  subcategoryBtn: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: "#ddd",
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: "flex-end",
     backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
-    maxHeight: 300,
-    borderTopLeftRadius: 15,
-    borderTopRightRadius: 15,
-    padding: 15,
+    width: "90%",
+    maxHeight: "70%",
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    elevation: 10,
   },
   modalItem: {
-    paddingVertical: 12,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
+    borderBottomColor: "#eee",
   },
 });

@@ -16,6 +16,7 @@ const Stack = createNativeStackNavigator<SupermarketStackParamList>();
 
 export default function SupermarketStackNavigator() {
   const { theme, isDark } = useTheme();
+  
 
   return (
     <Stack.Navigator screenOptions={getCommonScreenOptions({ theme, isDark })}>
@@ -23,7 +24,7 @@ export default function SupermarketStackNavigator() {
         name="Supermarket"
         component={SupermarketScreen}
         options={{
-          headerTitle: () => <HeaderTitle title="MarketHub" />,
+          headerTitle: () => <HeaderTitle title="SuperMarket" />,
         }}
       />
       <Stack.Screen

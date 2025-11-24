@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "MarketHub",
-    "slug": "markethub",
+    "name": "bubu",
+    "slug": "bubu",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "markethub",
+    "scheme": "bubu",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.markethub.app"
+      "bundleIdentifier": "com.bubu.app"
     },
     "android": {
       "package": "com.markethub.app",

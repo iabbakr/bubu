@@ -6,7 +6,7 @@ import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { ProductCard } from "../components/ProductCard";
-import { LocationFilter } from "../components/LocationFilter";
+import { LocationFilterWithCity } from "../components/LocationFilterWithCity";
 import { ScreenScrollView } from "../components/ScreenScrollView";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
@@ -15,6 +15,7 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
+import { SearchBar } from "../components/SearchBar";
 
 type PharmacyScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -28,11 +29,12 @@ export default function PharmacyScreen() {
   const { getTotalItems } = useCart();
   
   const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");               // <-- search state
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedState, setSelectedState] = useState<string | null>(
-    user?.location?.state || null
-  );
+  const [selectedState, setSelectedState] = useState<string | null>(user?.location?.state || null);
+  const [selectedCity, setSelectedCity] = useState<string | null>(user?.location?.city || null);
+
 
   useEffect(() => {
     loadProducts();
@@ -40,7 +42,8 @@ export default function PharmacyScreen() {
 
   useEffect(() => {
     filterProducts();
-  }, [products, selectedState]);
+  }, [products, selectedState, selectedCity, search]);    // <-- search integrated
+
 
   const loadProducts = async () => {
     try {
@@ -54,41 +57,64 @@ export default function PharmacyScreen() {
   };
 
   const filterProducts = () => {
-    if (!selectedState) {
-      // Show all products
-      setFilteredProducts(products);
-    } else {
-      // Filter by selected state
-      const filtered = products.filter(
-        product => product.location?.state === selectedState
+    let filtered = products;
+
+    // FILTER BY STATE
+    if (selectedState) {
+      filtered = filtered.filter(
+        p => p.location?.state === selectedState
       );
-      setFilteredProducts(filtered);
     }
+
+    // FILTER BY CITY
+    if (selectedCity) {
+      filtered = filtered.filter(
+        p => p.location?.city === selectedCity
+      );
+    }
+
+    // 🔍 SEARCH FILTER
+    if (search.trim() !== "") {
+      filtered = filtered.filter(
+        p =>
+          p.name.toLowerCase().includes(search.toLowerCase()) ||
+          p.description?.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+
+    setFilteredProducts(filtered);
   };
 
+
   const renderHeader = () => (
-  <View style={styles.header}>
-    <View style={styles.headerTop}>
-      <View>
-        <ThemedText type="h2">Health & Wellness</ThemedText>
-        <ThemedText
-          type="caption"
-          style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
-        >
-          {selectedState
-            ? `Products in ${selectedState}`
-            : "Medicines and health products you can trust"
-          }
-        </ThemedText>
+    <View style={styles.header}>
+      {/* 🔍 Search Bar — at top */}
+      <SearchBar value={search} onChange={setSearch} />
+
+      <View style={styles.headerTop}>
+        <View>
+          <ThemedText type="h2">Health & Wellness</ThemedText>
+          <ThemedText
+            type="caption"
+            style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
+          >
+            {selectedState
+              ? `Products in ${selectedState}`
+              : "Medicines and health products you can trust"
+            }
+          </ThemedText>
+        </View>
       </View>
-    </View>
 
-    <LocationFilter
+      <LocationFilterWithCity
         selectedState={selectedState}
-        onStateChange={setSelectedState}
+        selectedCity={selectedCity}
+        onChange={(state, city) => {
+          setSelectedState(state);
+          setSelectedCity(city);
+        }}
       />
-  </View>
-
+    </View>
   );
 
   const renderEmpty = () => (
@@ -106,7 +132,10 @@ export default function PharmacyScreen() {
       {selectedState && (
         <Pressable
           style={[styles.clearFilter, { backgroundColor: theme.primary }]}
-          onPress={() => setSelectedState(null)}
+          onPress={() => {
+            setSelectedState(null);
+            setSelectedCity(null);
+          }}
         >
           <ThemedText lightColor="#fff" darkColor="#fff">
             View All States
@@ -150,7 +179,9 @@ export default function PharmacyScreen() {
             <View key={product.id} style={styles.gridItem}>
               <ProductCard 
                 product={product} 
-                onPress={() => navigation.navigate("ProductDetail",{ productId: product.id })}
+                onPress={() =>
+                  navigation.navigate("ProductDetail", { productId: product.id })
+                }
               />
             </View>
           ))}

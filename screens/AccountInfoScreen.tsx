@@ -24,7 +24,6 @@ export default function AccountInfoScreen() {
 
     setLoading(true);
     try {
-      // Update user information in Firebase
       const updatedUser = {
         ...user,
         name,
@@ -32,7 +31,7 @@ export default function AccountInfoScreen() {
       };
 
       await firebaseService.updateUserInfo(user.uid, { name, phone });
-      
+
       if (updateUser) {
         updateUser(updatedUser);
       }
@@ -132,7 +131,9 @@ export default function AccountInfoScreen() {
                 keyboardType="phone-pad"
               />
               {renderInfoRow("mail", "Email", email)}
-              
+              {renderInfoRow("gift", "Referral Code", user.referralCode || "Not provided")}
+              {user.role === "seller" && renderInfoRow("briefcase", "Seller Category", user.sellerCategory || "Not specified")}
+
               <View style={styles.buttonRow}>
                 <PrimaryButton
                   title="Cancel"
@@ -154,6 +155,8 @@ export default function AccountInfoScreen() {
               {renderInfoRow("phone", "Phone Number", phone, true)}
               {renderInfoRow("mail", "Email", email)}
               {renderInfoRow("calendar", "Member Since", new Date(user.createdAt).toLocaleDateString())}
+              {renderInfoRow("gift", "Referral Code", user.myReferralCode || "Not provided")}
+              {user.role === "seller" && renderInfoRow("briefcase", "Seller Category", user.sellerCategory || "Not specified")}
             </>
           )}
         </View>
@@ -220,7 +223,7 @@ export default function AccountInfoScreen() {
           </Pressable>
         </View>
 
-        {/* Danger Zone */}
+        {/* Danger Zone 
         <View style={styles.section}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.lg, color: "#ef4444" }}>
             Danger Zone
@@ -250,7 +253,9 @@ export default function AccountInfoScreen() {
               Delete Account
             </ThemedText>
           </Pressable>
+          
         </View>
+        */}
       </View>
     </ScreenScrollView>
   );

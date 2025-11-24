@@ -1,4 +1,6 @@
-import { View, StyleSheet, Image, Pressable, Alert } from "react-native";
+// screens/ProductDetailScreen.tsx
+
+import { View, StyleSheet, Image, Pressable, Alert, Platform } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
@@ -11,17 +13,15 @@ import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 
-type RouteParams = {
-  productId: string;
-};
+type RouteParams = { productId: string };
 
 export default function ProductDetailScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ params: RouteParams }, "params">>();
   const { addToCart } = useCart();
-  
+
   const [product, setProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -37,141 +37,235 @@ export default function ProductDetailScreen() {
       setProduct(found || null);
     } catch (error) {
       console.error("Error loading product:", error);
+      Alert.alert("Error", "Failed to load product");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddToCart = () => {
-    if (!user) {
-      Alert.alert("Error", "Please sign in to add items to cart");
-      return;
-    }
-
-    if (!product) return;
-
-    addToCart(product, quantity);
-    Alert.alert(
-      "Success",
-      `Added ${quantity} ${product.name} to cart`,
-      [
-        { text: "Continue Shopping", style: "cancel" },
-        { text: "View Cart", onPress: () => navigation.navigate("Cart" as never) },
-      ]
-    );
-  };
-
   if (loading) {
     return (
-      <ScreenScrollView>
-        <View style={styles.loading}>
-          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-            Loading product...
-          </ThemedText>
-        </View>
+      <ScreenScrollView contentContainerStyle={styles.center}>
+        <ThemedText type="h4" style={{ color: theme.textSecondary }}>Loading product...</ThemedText>
       </ScreenScrollView>
     );
   }
 
   if (!product) {
     return (
-      <ScreenScrollView>
-        <View style={styles.empty}>
-          <Feather name="alert-circle" size={64} color={theme.textSecondary} />
-          <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
-            Product not found
-          </ThemedText>
-        </View>
+      <ScreenScrollView contentContainerStyle={styles.center}>
+        <Feather name="alert-circle" size={80} color={theme.textSecondary} />
+        <ThemedText type="h3" style={{ marginTop: 20, color: theme.textSecondary }}>
+          Product not found
+        </ThemedText>
       </ScreenScrollView>
     );
   }
 
-  const discountedPrice = product.discount 
+  const finalPrice = product.discount
     ? product.price * (1 - product.discount / 100)
     : product.price;
+
+  const totalPrice = finalPrice * quantity;
+
+  const isNearExpiry = product.expiryDate
+    ? new Date(product.expiryDate) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    : false;
+
+  const isExpired = product.expiryDate
+    ? new Date(product.expiryDate) < new Date()
+    : false;
+
+  const handleAddToCart = () => {
+    if (!user) {
+      Alert.alert("Login Required", "Please sign in to add items to cart");
+      return;
+    }
+
+    if (isExpired) {
+      Alert.alert("Expired Product", "This medicine has expired and cannot be purchased.");
+      return;
+    }
+
+    if (product.isPrescriptionRequired) {
+      Alert.alert(
+        "Prescription Required",
+        "This is a prescription medicine. You'll need to upload a prescription during checkout.",
+        [{ text: "OK" }]
+      );
+    }
+
+    addToCart(product, quantity);
+    Alert.alert(
+      "Added to Cart!",
+      `${quantity} × ${product.name} added to your cart`,
+      [
+        { text: "Continue Shopping", style: "cancel" },
+        { text: "Go to Cart", onPress: () => navigation.navigate("Cart") },
+      ]
+    );
+  };
 
   return (
     <ScreenScrollView>
       <View style={styles.container}>
-        <Image 
-          source={{ uri: product.imageUrl || "https://via.placeholder.com/400" }}
-          style={styles.image}
-        />
+        {/* Product Image */}
+        <View style={styles.imageContainer}>
+          <Image
+            source={{ uri: product.imageUrl || "https://via.placeholder.com/400" }}
+            style={styles.image}
+            resizeMode="cover"
+          />
 
-        {product.discount ? (
-          <View style={[styles.badge, { backgroundColor: theme.error }]}>
-            <ThemedText style={styles.badgeText} lightColor="#fff" darkColor="#fff">
-              SAVE {product.discount}%
-            </ThemedText>
-          </View>
-        ) : null}
+          {/* Discount Badge */}
+          {product.discount ? (
+            <View style={[styles.discountBadge, { backgroundColor: theme.error }]}>
+              <ThemedText style={styles.badgeText}>SAVE {product.discount}%</ThemedText>
+            </View>
+          ) : null}
+
+          {/* Out of Stock Overlay */}
+          {product.stock === 0 && (
+            <View style={styles.outOfStockOverlay}>
+              <ThemedText style={styles.outOfStockText}>Out of Stock</ThemedText>
+            </View>
+          )}
+        </View>
 
         <View style={styles.content}>
-          <ThemedText type="h2" style={{ marginBottom: Spacing.sm }}>
+          {/* Title */}
+          <ThemedText type="h2" style={styles.title}>
             {product.name}
           </ThemedText>
 
+          {/* Brand & Weight */}
+          {(product.brand || product.weight) && (
+            <ThemedText type="body" style={{ color: theme.primary, marginBottom: Spacing.sm }}>
+              {product.brand} {product.weight ? `• ${product.weight}` : ""}
+            </ThemedText>
+          )}
+
+          {/* Price Row */}
           <View style={styles.priceRow}>
             <ThemedText type="h1" style={{ color: theme.primary }}>
-              ₦{discountedPrice.toFixed(2)}
+              ₦{finalPrice.toFixed(0)}
             </ThemedText>
             {product.discount ? (
-              <ThemedText 
-                type="h4" 
-                style={[styles.originalPrice, { color: theme.textSecondary }]}
-              >
-                ₦{product.price.toFixed(2)}
+              <ThemedText type="h4" style={[styles.strikethrough, { color: theme.textSecondary }]}>
+                ₦{product.price.toFixed(0)}
               </ThemedText>
             ) : null}
           </View>
 
-          <View style={[styles.stockBadge, { backgroundColor: theme.backgroundSecondary }]}>
-            <Feather 
-              name="package" 
-              size={16} 
-              color={product.stock > 0 ? theme.success : theme.error} 
-            />
-            <ThemedText 
-              type="caption" 
-              style={{ 
-                marginLeft: Spacing.xs,
-                color: product.stock > 0 ? theme.success : theme.error 
-              }}
-            >
-              {product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}
-            </ThemedText>
+          {/* Info Chips */}
+          <View style={styles.chips}>
+            {product.subcategory && (
+              <View style={[styles.chip, { backgroundColor: theme.backgroundSecondary }]}>
+                <ThemedText type="caption">{product.subcategory}</ThemedText>
+              </View>
+            )}
+
+            {product.stock > 0 ? (
+              <View style={[styles.chip, { backgroundColor: theme.success + "20" }]}>
+                <Feather name="check-circle" size={14} color={theme.success} />
+                <ThemedText type="caption" style={{ marginLeft: 4, color: theme.success }}>
+                  {product.stock} in stock
+                </ThemedText>
+              </View>
+            ) : (
+              <View style={[styles.chip, { backgroundColor: theme.error + "20" }]}>
+                <Feather name="x-circle" size={14} color={theme.error} />
+                <ThemedText type="caption" style={{ marginLeft: 4, color: theme.error }}>
+                  Out of stock
+                </ThemedText>
+              </View>
+            )}
+
+            {product.isPrescriptionRequired && (
+              <View style={[styles.chip, { backgroundColor: "#007AFF20" }]}>
+                <Feather name="file-text" size={14} color="#007AFF" />
+                <ThemedText type="caption" style={{ marginLeft: 4, color: "#007AFF" }}>
+                  Prescription Required
+                </ThemedText>
+              </View>
+            )}
+
+            {isNearExpiry && !isExpired && (
+              <View style={[styles.chip, { backgroundColor: "#FF950020" }]}>
+                <Feather name="alert-triangle" size={14} color="#FF9500" />
+                <ThemedText type="caption" style={{ marginLeft: 4, color: "#FF9500" }}>
+                  Expiring Soon
+                </ThemedText>
+              </View>
+            )}
+
+            {isExpired && (
+              <View style={[styles.chip, { backgroundColor: theme.error + "30" }]}>
+                <Feather name="alert-octagon" size={14} color={theme.error} />
+                <ThemedText type="caption" style={{ marginLeft: 4, color: theme.error }}>
+                  Expired
+                </ThemedText>
+              </View>
+            )}
           </View>
 
-          <ThemedText type="h4" style={{ marginTop: Spacing.xl, marginBottom: Spacing.sm }}>
-            Description
-          </ThemedText>
-          <ThemedText type="body" style={{ color: theme.textSecondary }}>
-            {product.description}
+          {/* Expiry Date */}
+          {product.expiryDate && (
+            <View style={styles.infoRow}>
+              <Feather name="calendar" size={18} color={theme.textSecondary} />
+              <ThemedText type="body" style={{ marginLeft: 8, color: theme.textSecondary }}>
+                Expires: {new Date(product.expiryDate).toDateString()}
+              </ThemedText>
+            </View>
+          )}
+
+          {/* Description */}
+          <ThemedText type="h4" style={styles.sectionTitle}>Description</ThemedText>
+          <ThemedText type="body" style={{ color: theme.textSecondary, lineHeight: 22 }}>
+            {product.description || "No description available."}
           </ThemedText>
 
+          {/* Quantity Selector */}
           <View style={styles.quantitySection}>
             <ThemedText type="h4">Quantity</ThemedText>
             <View style={styles.quantityControls}>
               <Pressable
-                style={[styles.quantityButton, { backgroundColor: theme.backgroundSecondary }]}
                 onPress={() => setQuantity(Math.max(1, quantity - 1))}
+                style={styles.qtyBtn}
               >
                 <Feather name="minus" size={20} color={theme.text} />
               </Pressable>
-              <ThemedText type="h3" style={styles.quantity}>{quantity}</ThemedText>
+              <ThemedText type="h3" style={styles.qtyText}>{quantity}</ThemedText>
               <Pressable
-                style={[styles.quantityButton, { backgroundColor: theme.backgroundSecondary }]}
-                onPress={() => setQuantity(Math.min(product.stock, quantity + 1))}
+                onPress={() => setQuantity(Math.min(product.stock || 1, quantity + 1))}
+                style={styles.qtyBtn}
+                disabled={product.stock === 0}
               >
                 <Feather name="plus" size={20} color={theme.text} />
               </Pressable>
             </View>
           </View>
 
+          {/* Total Price */}
+          <View style={styles.totalRow}>
+            <ThemedText type="h4">Total:</ThemedText>
+            <ThemedText type="h2" style={{ color: theme.primary }}>
+              ₦{totalPrice.toFixed(0)}
+            </ThemedText>
+          </View>
+
+          {/* Add to Cart Button */}
           <PrimaryButton
-            title={`Add to Cart • ₦${(discountedPrice * quantity).toFixed(2)}`}
+            title={
+              product.stock === 0
+                ? "Out of Stock"
+                : isExpired
+                ? "Expired – Cannot Buy"
+                : `Add to Cart • ₦${totalPrice.toFixed(0)}`
+            }
             onPress={handleAddToCart}
-            disabled={product.stock === 0}
+            disabled={product.stock === 0 || isExpired}
+            style={{ marginTop: Spacing.xl }}
           />
         </View>
       </View>
@@ -180,74 +274,66 @@ export default function ProductDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loading: {
-    alignItems: "center",
-    paddingVertical: Spacing["5xl"],
-  },
-  empty: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: Spacing["5xl"],
-  },
-  image: {
-    width: "100%",
-    height: 300,
-    resizeMode: "cover",
-  },
-  badge: {
+  container: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  imageContainer: { position: "relative" },
+  image: { width: "100%", height: 340, backgroundColor: "#f0f0f0" },
+  discountBadge: {
     position: "absolute",
-    top: Spacing.lg,
-    right: Spacing.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.sm,
+    top: 16,
+    right: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  badgeText: {
-    fontSize: 14,
-    fontWeight: "700",
+  badgeText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  outOfStockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  content: {
-    padding: Spacing.lg,
-  },
-  priceRow: {
+  outOfStockText: { color: "#fff", fontSize: 24, fontWeight: "bold" },
+  content: { padding: Spacing.xl },
+  title: { marginBottom: 4 },
+  priceRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: Spacing.md },
+  strikethrough: { textDecorationLine: "line-through" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginVertical: Spacing.md },
+  chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  originalPrice: {
-    textDecorationLine: "line-through",
-  },
-  stockBadge: {
+  infoRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.xs,
-    alignSelf: "flex-start",
+    marginVertical: Spacing.sm,
   },
-  quantitySection: {
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
+  sectionTitle: { marginTop: Spacing.xl, marginBottom: Spacing.md },
+  quantitySection: { marginVertical: Spacing.xl },
   quantityControls: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: Spacing.md,
   },
-  quantityButton: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.sm,
+  qtyBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
   },
-  quantity: {
-    marginHorizontal: Spacing.xl,
-    minWidth: 40,
-    textAlign: "center",
+  qtyText: { marginHorizontal: Spacing.xl, minWidth: 50, textAlign: "center" },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+    marginTop: Spacing.lg,
   },
 });

@@ -6,7 +6,7 @@ import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { ProductCard } from "../components/ProductCard";
-import { LocationFilter } from "../components/LocationFilter";
+import { LocationFilterWithCity } from "../components/LocationFilterWithCity";
 import { ScreenScrollView } from "../components/ScreenScrollView";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
@@ -15,6 +15,7 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
+import { SearchBar } from "../components/SearchBar";
 
 type SupermarketScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -26,13 +27,13 @@ export default function SupermarketScreen() {
   const navigation = useNavigation<SupermarketScreenNavigationProp>();
   const { user } = useAuth();
   const { getTotalItems } = useCart();
-  
+
   const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedState, setSelectedState] = useState<string | null>(
-    user?.location?.state || null
-  );
+  const [selectedState, setSelectedState] = useState<string | null>(user?.location?.state || null);
+  const [selectedCity, setSelectedCity] = useState<string | null>(user?.location?.city || null);
 
   useEffect(() => {
     loadProducts();
@@ -40,7 +41,7 @@ export default function SupermarketScreen() {
 
   useEffect(() => {
     filterProducts();
-  }, [products, selectedState]);
+  }, [products, selectedState, selectedCity, search]);
 
   const loadProducts = async () => {
     try {
@@ -54,16 +55,24 @@ export default function SupermarketScreen() {
   };
 
   const filterProducts = () => {
-    if (!selectedState) {
-      // Show all products
-      setFilteredProducts(products);
-    } else {
-      // Filter by selected state
-      const filtered = products.filter(
-        product => product.location?.state === selectedState
-      );
-      setFilteredProducts(filtered);
+    let filtered = products;
+
+    if (selectedState) {
+      filtered = filtered.filter(p => p.location?.state === selectedState);
     }
+
+    if (selectedCity) {
+      filtered = filtered.filter(p => p.location?.city === selectedCity);
+    }
+
+    if (search.trim() !== "") {
+      const lowerSearch = search.toLowerCase();
+      filtered = filtered.filter(
+        p => p.name.toLowerCase().includes(lowerSearch)
+      );
+    }
+
+    setFilteredProducts(filtered);
   };
 
   const renderHeader = () => (
@@ -79,11 +88,18 @@ export default function SupermarketScreen() {
           </ThemedText>
         </View>
       </View>
-      
+
+      {/* Search Bar */}
+      <SearchBar value={search} onChange={setSearch} />
+
       {/* Location Filter */}
-      <LocationFilter
+      <LocationFilterWithCity
         selectedState={selectedState}
-        onStateChange={setSelectedState}
+        selectedCity={selectedCity}
+        onChange={(state, city) => {
+          setSelectedState(state);
+          setSelectedCity(city);
+        }}
       />
     </View>
   );
@@ -118,7 +134,7 @@ export default function SupermarketScreen() {
   return (
     <ScreenScrollView>
       {renderHeader()}
-      
+
       {cartItemCount > 0 && (
         <Pressable
           style={[styles.fab, { backgroundColor: theme.primary }]}
@@ -147,7 +163,7 @@ export default function SupermarketScreen() {
             <View key={product.id} style={styles.gridItem}>
               <ProductCard 
                 product={product} 
-                onPress={() => navigation.navigate("ProductDetail",{ productId: product.id } )}
+                onPress={() => navigation.navigate("ProductDetail",{ productId: product.id })}
               />
             </View>
           ))}

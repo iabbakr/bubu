@@ -6,9 +6,12 @@ import { Feather } from "@expo/vector-icons";
 import OrdersScreen from "@/screens/OrdersScreen";
 import { getCommonScreenOptions } from "@/navigation/screenOptions";
 import { useTheme } from "@/hooks/useTheme";
+import OrderDetailScreen from "@/screens/OrderDetailScreen";
+import AdminDisputeScreen from "@/screens/AdminDisputeDashboard";
 
 export type OrdersStackParamList = {
   Orders: undefined;
+  OrderDetailScreen: undefined;
   AdminDisputeScreen: { orderId: string };
 };
 
@@ -50,6 +53,36 @@ export default function OrdersStackNavigator() {
         component={OrdersScreen}
         options={{
           title: "Orders",
+          headerRight: () => (
+            <Pressable
+              onPress={contactSupport}
+              style={{ padding: 8 }}
+            >
+              <Feather name="headphones" size={24} color={theme.primary} />
+            </Pressable>
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="AdminDispute"
+        component={AdminDisputeScreen}
+        options={{
+          title: "Admin Dispute",
+          headerRight: () => (
+            <Pressable
+              onPress={contactSupport}
+              style={{ padding: 8 }}
+            >
+              <Feather name="headphones" size={24} color={theme.primary} />
+            </Pressable>
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="OrderDetailScreen"
+        component={OrderDetailScreen}
+        options={{
+          title: "Orders Detail",
           headerRight: () => (
             <Pressable
               onPress={contactSupport}

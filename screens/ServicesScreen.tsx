@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   compactCard: {
-    width: 90,
+    width: 100,
     borderWidth: 1,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,

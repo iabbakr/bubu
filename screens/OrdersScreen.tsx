@@ -61,6 +61,10 @@ export default function OrdersScreen() {
     }
   };
 
+  const handleViewOrderDetails = (order: Order) => {
+    navigation.navigate("OrderDetailScreen", { orderId: order.id });
+  };
+
   const handleConfirmReceipt = (order: Order) => {
     Alert.alert(
       "Confirm Receipt",
@@ -144,20 +148,23 @@ export default function OrdersScreen() {
       return;
     }
 
-    // Map local choice to firebaseService expected values
-  const resolution =
-    adminDecision === "refund" ? "refund_buyer" : "release_to_seller";
+    const resolution = adminDecision === "refund" ? "refund_buyer" : "release_to_seller";
+    
     try {
-    await firebaseService.resolveDispute(selectedOrder.id, user.uid, resolution);
-    Alert.alert("Success", "Dispute resolved successfully");
-    setShowAdminDisputeModal(false);
-    setAdminDecision("none");
-    setSelectedOrder(null);
-    loadOrders();
-  } catch (error: any) {
-    Alert.alert("Error", error.message || "Failed to resolve dispute");
-  }
-};
+      await firebaseService.resolveDispute(selectedOrder.id, user.uid, resolution);
+      Alert.alert("Success", "Dispute resolved successfully");
+      setShowAdminDisputeModal(false);
+      setAdminDecision("none");
+      setSelectedOrder(null);
+      loadOrders();
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to resolve dispute");
+    }
+  };
+
+  const handleOpenDisputeChat = (order: Order) => {
+    navigation.navigate("DisputeChatScreen", { orderId: order.id });
+  };
 
   const contactSupport = () => {
     Alert.alert(
@@ -169,6 +176,22 @@ export default function OrdersScreen() {
         { text: "Chat", onPress: () => Alert.alert("Chat", "Chat feature coming soon") }
       ]
     );
+  };
+
+  const getDeliveryTimeframe = (order: Order) => {
+    if (!order.location) return "Delivery timeframe to be confirmed";
+    
+    // Assume current user location is same state/city for demo
+    const sameCity = true; // You would check order.location.city against user location
+    const sameState = true; // You would check order.location.state against user location
+    
+    if (sameCity) {
+      return "3-6 hours (max 8 hours) - Within city";
+    } else if (sameState) {
+      return "24 hours (max 48 hours) - Within state";
+    } else {
+      return "24 hours to 5 days - Interstate delivery";
+    }
   };
 
   const renderTab = (status: OrderStatus, label: string) => {
@@ -205,7 +228,7 @@ export default function OrdersScreen() {
         <View style={styles.actionsContainer}>
           {isBuyer && (
             <PrimaryButton
-              title="Received ✓"
+              title="Confirm Received ✓"
               onPress={() => handleConfirmReceipt(order)}
               style={styles.actionButton}
             />
@@ -218,15 +241,31 @@ export default function OrdersScreen() {
               style={styles.actionButton}
             />
           )}
-          <Pressable
-            style={[styles.disputeButton, { borderColor: theme.warning }]}
-            onPress={() => openDisputeModal(order)}
-          >
-            <Feather name="alert-circle" size={16} color={theme.warning} />
-            <ThemedText style={{ marginLeft: 6, color: theme.warning }}>
-              {isBuyer ? "Open Dispute there is an issue" : "Open Dispute If Delivered"}
-            </ThemedText>
-          </Pressable>
+          
+          {/* Delivery Terms Notice */}
+          <View style={[styles.deliveryNotice, { backgroundColor: theme.backgroundSecondary }]}>
+            <Feather name="clock" size={16} color={theme.primary} />
+            <View style={{ flex: 1, marginLeft: Spacing.sm }}>
+              <ThemedText type="caption" style={{ fontWeight: "600" }}>
+                Expected Delivery: {getDeliveryTimeframe(order)}
+              </ThemedText>
+              <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+                If not delivered within stated time, open a dispute for refund. T&C apply.
+              </ThemedText>
+            </View>
+          </View>
+
+          {(isBuyer || isSeller) && (
+            <Pressable
+              style={[styles.disputeButton, { borderColor: theme.warning }]}
+              onPress={() => openDisputeModal(order)}
+            >
+              <Feather name="alert-circle" size={16} color={theme.warning} />
+              <ThemedText style={{ marginLeft: 6, color: theme.warning }}>
+                {isBuyer ? "Report Issue / Open Dispute" : "Open Dispute If Delivered"}
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
       );
     }
@@ -236,8 +275,14 @@ export default function OrdersScreen() {
         return (
           <View style={{ marginTop: 10 }}>
             <PrimaryButton
-              title="Resolve Dispute"
+              title="Resolve Dispute (Admin)"
               onPress={() => openAdminDisputeModal(order)}
+            />
+            <PrimaryButton
+              title="Open Dispute Chat"
+              onPress={() => handleOpenDisputeChat(order)}
+              variant="outlined"
+              style={{ marginTop: Spacing.sm }}
             />
           </View>
         );
@@ -245,11 +290,15 @@ export default function OrdersScreen() {
         return (
           <View style={{ marginTop: 10 }}>
             <PrimaryButton
-              title="Open Dispute Chat"
-              onPress={() =>
-                navigation.navigate("DisputeChatScreen", { orderId: order.id })
-              }
+              title="View Dispute Chat"
+              onPress={() => handleOpenDisputeChat(order)}
             />
+            <View style={[styles.disputeNotice, { marginTop: Spacing.sm }]}>
+              <Feather name="message-circle" size={16} color={theme.warning} />
+              <ThemedText type="caption" style={{ marginLeft: Spacing.sm, color: theme.warning }}>
+                Dispute is open. Chat with admin for resolution.
+              </ThemedText>
+            </View>
           </View>
         );
       }
@@ -263,7 +312,9 @@ export default function OrdersScreen() {
       key={order.id}
       style={[styles.orderCardContainer, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
     >
-      <OrderCard order={order} onPress={() => {}} />
+      <Pressable onPress={() => handleViewOrderDetails(order)}>
+        <OrderCard order={order} onPress={() => handleViewOrderDetails(order)} />
+      </Pressable>
       {renderOrderActions(order)}
     </View>
   );
@@ -450,6 +501,7 @@ const styles = StyleSheet.create({
   actionsContainer: { padding: Spacing.lg, borderTopWidth: 1, borderTopColor: "#e5e5e5" },
   actionButton: { marginBottom: 0, padding: Spacing.md, borderRadius: BorderRadius.sm, alignItems: "center", justifyContent: "center" },
   disputeButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", padding: Spacing.md, borderRadius: BorderRadius.sm, borderWidth: 1, marginTop: Spacing.sm },
+  deliveryNotice: { flexDirection: "row", alignItems: "flex-start", padding: Spacing.md, borderRadius: BorderRadius.sm, marginBottom: Spacing.sm },
   disputeNotice: { flexDirection: "row", alignItems: "center", padding: Spacing.lg, borderTopWidth: 1, borderTopColor: "#e5e5e5" },
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: Spacing["5xl"] },
   loading: { alignItems: "center", paddingVertical: Spacing["5xl"] },

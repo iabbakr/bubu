@@ -1,3 +1,5 @@
+// screens/SellerDashboardScreen.tsx
+
 import { View, StyleSheet, Pressable, Alert } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
@@ -15,8 +17,6 @@ import { SellerStackParamList } from "../types/type";
 type SellerDashboardNavigationProp = NativeStackNavigationProp<SellerStackParamList, "SellerDashboard">;
 
 export default function SellerDashboardScreen() {
-
-  
   const { theme } = useTheme();
   const { user } = useAuth();
   const navigation = useNavigation<SellerDashboardNavigationProp>();
@@ -47,32 +47,17 @@ export default function SellerDashboardScreen() {
     }
   };
 
- 
-
-  const renderStatCard = (icon: string, label: string, value: string, color: string) => (
-    <View style={[styles.statCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+  const renderStatCard = (icon: string, label: string, value: string, color: string, onPress?: () => void) => (
+    <Pressable
+      style={[styles.statCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+      onPress={onPress}
+    >
       <View style={[styles.statIcon, { backgroundColor: color + "20" }]}>
         <Feather name={icon as any} size={24} color={color} />
       </View>
       <ThemedText type="h2" style={{ color, marginTop: Spacing.sm }}>{value}</ThemedText>
       <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>{label}</ThemedText>
-    </View>
-  );
-
-  const renderOrderCard = (order: Order) => (
-    <View
-      key={order.id}
-      style={[styles.orderCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
-    >
-      <View style={styles.orderHeader}>
-        <ThemedText type="h4">Order #{order.id.slice(-6)}</ThemedText>
-        <ThemedText type="h4" style={{ color: theme.primary }}>${order.totalAmount.toFixed(2)}</ThemedText>
-      </View>
-      <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
-        {order.products.length} item(s) • {new Date(order.createdAt).toLocaleDateString()}
-        Waiting for buyer confirmation
-      </ThemedText>
-    </View>
+    </Pressable>
   );
 
   if (!user || user.role !== "seller") {
@@ -109,11 +94,13 @@ export default function SellerDashboardScreen() {
           </View>
         )}
 
+        {/* Stats */}
         <View style={styles.statsGrid}>
-          {renderStatCard("package", "Products", products.length.toString(), theme.primary)}
-          {renderStatCard("shopping-bag", "Orders", orders.length.toString(), theme.warning)}
+          {renderStatCard("package", "Products", products.length.toString(), theme.primary, () => navigation.navigate("MyProducts"))}
+          {renderStatCard("shopping-bag", "Orders", orders.length.toString(), theme.warning, () => navigation.navigate("MyOrders"))}
         </View>
 
+        {/* Pending Orders */}
         <View style={styles.section}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>Pending Orders</ThemedText>
           {orders.length === 0 ? (
@@ -121,26 +108,39 @@ export default function SellerDashboardScreen() {
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>No pending orders</ThemedText>
             </View>
           ) : (
-            orders.map(renderOrderCard)
+            orders.slice(0, 5).map(order => (
+              <Pressable
+                key={order.id}
+                onPress={() => navigation.navigate("OrderDetail", { orderId: order.id })}
+                style={[styles.orderCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+              >
+                <View style={styles.orderHeader}>
+                  <ThemedText type="h4">Order #{order.id.slice(-6)}</ThemedText>
+                  <ThemedText type="h4" style={{ color: theme.primary }}>${order.totalAmount.toFixed(2)}</ThemedText>
+                </View>
+                <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
+                  {order.products.length} item(s) • {new Date(order.createdAt).toLocaleDateString()} • Waiting for buyer confirmation
+                </ThemedText>
+              </Pressable>
+            ))
+          )}
+          {orders.length > 5 && (
+            <PrimaryButton title="View All Orders" onPress={() => navigation.navigate("MyOrders")} />
           )}
         </View>
 
-        {/* Products Section */}
+        {/* Products */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <ThemedText type="h3">My Products</ThemedText>
-            <Pressable onPress={() => navigation.navigate("AddProduct" as never)}>
-
-              <Feather name="plus-circle" size={24} color={theme.primary} />
-            </Pressable>
+            <PrimaryButton title="Add Product" onPress={() => navigation.navigate("AddProduct")} />
           </View>
-
           {products.length === 0 ? (
             <View style={[styles.emptySection, { backgroundColor: theme.backgroundSecondary }]}>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>No products yet. Add your first product!</ThemedText>
             </View>
           ) : (
-            products.map(product => (
+            products.slice(0, 5).map(product => (
               <Pressable
                 key={product.id}
                 onPress={() => navigation.navigate("EditProduct", { product })}
@@ -152,6 +152,9 @@ export default function SellerDashboardScreen() {
                 </ThemedText>
               </Pressable>
             ))
+          )}
+          {products.length > 5 && (
+            <PrimaryButton title="View All Products" onPress={() => navigation.navigate("MyProducts")} />
           )}
         </View>
       </View>

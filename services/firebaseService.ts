@@ -57,7 +57,13 @@ export interface Product {
   sellerId: string;
   stock: number;
   discount?: number;
-  location: Location;
+  location: Location
+  brand?: string;
+  weight?: string; // e.g., "500g", "1L", "30 tablets"
+  expiryDate?: string; // ISO string: "2026-12-31"
+  isPrescriptionRequired?: boolean; // only for pharmacy
+  isFeatured?: boolean;
+  tags?: string[];
   createdAt: number;
 }
 
@@ -83,10 +89,21 @@ export interface Order {
   disputeStatus?: "none" | "open" | "resolved";
   disputeDetails?: string;
   adminNotes?: string;
+  phoneNumber?: string;
+  location?: Location,
+  trackingStatus?: "acknowledged" | "enroute" | "ready_for_pickup" | null; // NEW
+  trackingHistory?: TrackingEvent[]; // NEW
   createdAt: number;
   updatedAt: number;
   resolvedByAdmin?: boolean;        // new
   adminResolution?: "delivered" | "cancelled"; // new
+}
+
+// NEW: Tracking event interface
+export interface TrackingEvent {
+  status: "acknowledged" | "enroute" | "ready_for_pickup" | "delivered";
+  timestamp: number;
+  message: string;
 }
 
 export interface DisputeMessage {
@@ -281,6 +298,13 @@ export const firebaseService = {
       sellerId: product.sellerId,
       stock: product.stock,
       location: product.location,
+      brand: product.brand?.trim() || null,
+      weight: product.weight?.trim() || null,
+      expiryDate: product.expiryDate || null,
+      isPrescriptionRequired: product.isPrescriptionRequired ?? null,
+      discount: product.discount ?? 0,
+      isFeatured: product.isFeatured ?? false,
+      tags: product.tags || [],
       createdAt: Date.now(),
     };
 
@@ -320,11 +344,17 @@ export const firebaseService = {
 
     const updateData: any = { updatedAt: Date.now() };
 
-    Object.keys(data).forEach((key) => {
-      if (data[key as keyof Product] !== undefined) {
-        updateData[key] = data[key as keyof Product];
-      }
-    });
+    const allowedFields = [
+    "name", "description", "price", "stock", "subcategory",
+    "brand", "weight", "expiryDate", "isPrescriptionRequired",
+    "discount", "isFeatured", "tags", "imageUrl"
+  ];
+
+    allowedFields.forEach((field) => {
+    if (data[field as keyof Product] !== undefined) {
+      updateData[field] = data[field as keyof Product];
+    }
+  });
 
     await updateDoc(productRef, updateData);
   },
@@ -337,89 +367,142 @@ export const firebaseService = {
   // -----------------------------
   // ORDERS - COMPLETE SYSTEM
   // -----------------------------
-  async createOrder(
-    buyerId: string,
-    sellerId: string,
-    products: OrderItem[],
-    deliveryAddress: string,
-    discount: number = 0
-  ) {
-    const subtotal = products.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const totalAmount = subtotal - discount;
-    const commission = totalAmount * COMMISSION_RATE;
+  // Inside firebaseService
+async createOrder(
+  buyerId: string,
+  sellerId: string,
+  products: OrderItem[],
+  deliveryAddress: string,
+  discount: number = 0,
+  phoneNumber?: string
+) {
+  // 1. Validate stock availability and calculate total
+  const productRefs = products.map(item =>
+    doc(db, "products", item.productId)
+  );
+  const productSnaps = await Promise.all(productRefs.map(ref => getDoc(ref)));
 
-    const ref = await addDoc(collection(db, "orders"), {
-      buyerId,
-      sellerId,
-      products,
-      totalAmount,
-      commission,
-      status: "running",
-      deliveryAddress,
-      disputeStatus: "none",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+  let subtotal = 0;
+  const stockUpdates: Promise<void>[] = [];
 
-    await updateDoc(ref, { id: ref.id });
+  for (let i = 0; i < products.length; i++) {
+    const item = products[i];
+    const snap = productSnaps[i];
 
-    // Add to seller's pending balance
-    const sellerWallet = await this.getWallet(sellerId);
-    sellerWallet.pendingBalance += totalAmount - commission;
-    sellerWallet.transactions.unshift({
+    if (!snap.exists()) {
+      throw new Error(`Product ${item.productName} no longer exists`);
+    }
+
+    const product = snap.data() as Product;
+
+    if (product.stock < item.quantity) {
+      throw new Error(`Insufficient stock for ${product.name}. Only ${product.stock} left.`);
+    }
+
+    // Calculate price (with product-level discount if any)
+    const unitPrice = product.discount
+      ? product.price * (1 - product.discount / 100)
+      : product.price;
+
+    subtotal += unitPrice * item.quantity;
+
+    // Prepare stock update
+    const newStock = product.stock - item.quantity;
+
+    if (newStock === 0) {
+      // Schedule deletion
+      stockUpdates.push(deleteDoc(doc(db, "products", item.productId)));
+    } else if (newStock > 0) {
+      // Schedule stock reduction
+      stockUpdates.push(
+        updateDoc(doc(db, "products", item.productId), {
+          stock: newStock,
+        })
+      );
+    }
+    // If newStock < 0 → already prevented above
+  }
+
+  const totalAmount = subtotal - discount;
+  const commission = totalAmount * COMMISSION_RATE;
+
+  // 2. Create the order
+  const orderRef = await addDoc(collection(db, "orders"), {
+    buyerId,
+    sellerId,
+    products,
+    totalAmount,
+    commission,
+    status: "running",
+    deliveryAddress,
+    phoneNumber,
+    disputeStatus: "none",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  await updateDoc(orderRef, { id: orderRef.id });
+
+  // 3. Update product stocks (and delete if zero)
+  await Promise.all(stockUpdates);
+
+  // 4. Wallet updates (same as before)
+  const sellerWallet = await this.getWallet(sellerId);
+  sellerWallet.pendingBalance += totalAmount - commission;
+  sellerWallet.transactions.unshift({
+    id: Date.now().toString(),
+    type: "credit",
+    amount: totalAmount - commission,
+    description: `Pending payment for order #${orderRef.id.slice(-6)}`,
+    timestamp: Date.now(),
+  });
+  await this.updateWallet(sellerWallet);
+
+  // Admin commission
+  const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
+  if (!adminUsers.empty) {
+    const adminId = adminUsers.docs[0].id;
+    const adminWallet = await this.getWallet(adminId);
+    adminWallet.balance += commission;
+    adminWallet.transactions.unshift({
       id: Date.now().toString(),
       type: "credit",
-      amount: totalAmount - commission,
-      description: `Pending payment for order #${ref.id.slice(-6)}`,
+      amount: commission,
+      description: `Commission from order #${orderRef.id.slice(-6)}`,
       timestamp: Date.now(),
     });
-    await this.updateWallet(sellerWallet);
+    await this.updateWallet(adminWallet);
+  }
 
-    // Add commission to admin
-    const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
-    if (!adminUsers.empty) {
-      const adminId = adminUsers.docs[0].id;
-      const adminWallet = await this.getWallet(adminId);
-      adminWallet.balance += commission;
-      adminWallet.transactions.unshift({
-        id: Date.now().toString(),
-        type: "credit",
-        amount: commission,
-        description: `Commission from order #${ref.id.slice(-6)}`,
-        timestamp: Date.now(),
-      });
-      await this.updateWallet(adminWallet);
-    }
+  // 5. Send emails (unchanged)
+  const buyerDoc = await getDoc(doc(db, "users", buyerId));
+  const sellerDoc = await getDoc(doc(db, "users", sellerId));
 
-    // Send confirmation emails
-    const buyerDoc = await getDoc(doc(db, "users", buyerId));
-    const sellerDoc = await getDoc(doc(db, "users", sellerId));
+  if (buyerDoc.exists()) {
+    const buyer = buyerDoc.data();
+    await emailService.sendOrderConfirmation(
+      buyer.email,
+      buyer.name,
+      orderRef.id,
+      totalAmount,
+      products
+    );
+  }
 
-    if (buyerDoc.exists()) {
-      const buyer = buyerDoc.data();
-      await emailService.sendOrderConfirmation(
-        buyer.email,
-        buyer.name,
-        ref.id,
-        totalAmount,
-        products
-      );
-    }
+  if (sellerDoc.exists()) {
+    const seller = sellerDoc.data();
+    await emailService.sendSellerNotification(
+      seller.email,
+      seller.name,
+      orderRef.id,
+      totalAmount - commission,
+      'new_order'
+    );
+  }
 
-    if (sellerDoc.exists()) {
-      const seller = sellerDoc.data();
-      await emailService.sendSellerNotification(
-        seller.email,
-        seller.name,
-        ref.id,
-        totalAmount - commission,
-        'new_order'
-      );
-    }
-
-    const snap = await getDoc(ref);
-    return snap.data() as Order;
-  },
+  const snap = await getDoc(orderRef);
+  return snap.data() as Order;
+},
 
   async getOrders(userId: string, role: UserRole): Promise<Order[]> {
     const ordersCol = collection(db, "orders");
@@ -942,7 +1025,7 @@ export const firebaseService = {
   async getOrder(orderId: string): Promise<Order | null> {
   const snap = await getDoc(doc(db, "orders", orderId));
   return snap.exists() ? (snap.data() as Order) : null;
-}
+},
 
 
 
@@ -959,5 +1042,84 @@ export const firebaseService = {
 // DISPUTE CHAT
 // ------------------------------------------
 
-  
+// NEW: Update order tracking status
+  async updateOrderTracking(
+    orderId: string,
+    status: "acknowledged" | "enroute" | "ready_for_pickup"
+  ): Promise<void> {
+    const orderRef = doc(db, "orders", orderId);
+    const orderSnap = await getDoc(orderRef);
+
+    if (!orderSnap.exists()) throw new Error("Order not found");
+
+    const order = orderSnap.data() as Order;
+
+    if (order.status !== "running") {
+      throw new Error("Can only update tracking for running orders");
+    }
+
+    const trackingEvent: TrackingEvent = {
+      status,
+      timestamp: Date.now(),
+      message: this.getTrackingMessage(status),
+    };
+
+    const trackingHistory = order.trackingHistory || [];
+    trackingHistory.push(trackingEvent);
+
+    await updateDoc(orderRef, {
+      trackingStatus: status,
+      trackingHistory,
+      updatedAt: Date.now(),
+    });
+
+    // Send push notification to buyer
+    await this.sendTrackingNotification(order.buyerId, orderId, status);
+
+    // Send email notification
+    const buyerDoc = await getDoc(doc(db, "users", order.buyerId));
+    if (buyerDoc.exists()) {
+      const buyer = buyerDoc.data();
+      await emailService.sendOrderTrackingUpdate(
+        buyer.email,
+        buyer.name,
+        orderId,
+        status,
+        this.getTrackingMessage(status)
+      );
+    }
+  },
+
+  // Helper method for tracking messages
+  getTrackingMessage(status: string): string {
+    switch (status) {
+      case "acknowledged":
+        return "Seller has acknowledged your order and is preparing it for delivery.";
+      case "enroute":
+        return "Your order is on the way! The delivery is in progress.";
+      case "ready_for_pickup":
+        return "Your order has arrived and is ready for pickup/delivery confirmation.";
+      default:
+        return "Order status updated.";
+    }
+  },
+
+  // NEW: Send tracking notification (placeholder - implement with your notification service)
+  async sendTrackingNotification(
+    userId: string,
+    orderId: string,
+    status: string
+  ): Promise<void> {
+    // TODO: Implement push notification logic here
+    // This could use Firebase Cloud Messaging, Expo Push Notifications, or another service
+    console.log(`Notification sent to user ${userId}: Order ${orderId} is now ${status}`);
+    
+    // Example structure:
+    // await pushNotificationService.send({
+    //   to: userId,
+    //   title: "Order Update",
+    //   body: this.getTrackingMessage(status),
+    //   data: { orderId, status }
+    // });
+  },  
 };

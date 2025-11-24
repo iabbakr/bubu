@@ -17,10 +17,12 @@ export default function CartScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
   const { items, removeFromCart, updateQuantity, clearCart, getSubtotal, getTotal } = useCart();
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [discount, setDiscount] = useState(0);
   const [loading, setLoading] = useState(false);
+  
 
   const handleApplyCoupon = async () => {
     if (!couponCode || !user) return;
@@ -53,6 +55,12 @@ export default function CartScreen() {
       return;
     }
 
+    const phoneRegex = /^[0-9]{10,15}$/;
+  if (!phoneRegex.test(phoneNumber.trim())) {
+    Alert.alert("Error", "Please enter a valid phone number");
+    return;
+  }
+
     setLoading(true);
     try {
       const sellerId = items[0].sellerId;
@@ -68,7 +76,8 @@ export default function CartScreen() {
         sellerId,
         orderItems,
         deliveryAddress,
-        discount
+        discount,
+        phoneNumber
       );
 
       if (couponCode) {
@@ -104,7 +113,7 @@ export default function CartScreen() {
             {item.name}
           </ThemedText>
           <ThemedText type="h4" style={{ color: theme.primary, marginTop: Spacing.xs }}>
-            ${itemPrice.toFixed(2)}
+            ₦{itemPrice.toFixed(2)}
           </ThemedText>
           <View style={styles.quantityControls}>
             <Pressable
@@ -172,6 +181,14 @@ export default function CartScreen() {
         </View>
 
         <TextInputField
+  label="Phone Number"
+  value={phoneNumber}
+  onChangeText={setPhoneNumber}
+  placeholder="Enter your phone number"
+  keyboardType="phone-pad"
+/>
+
+        <TextInputField
           label="Delivery Address"
           value={deliveryAddress}
           onChangeText={setDeliveryAddress}
@@ -182,18 +199,18 @@ export default function CartScreen() {
         <View style={[styles.summary, { backgroundColor: theme.backgroundSecondary }]}>
           <View style={styles.summaryRow}>
             <ThemedText>Subtotal</ThemedText>
-            <ThemedText>${getSubtotal().toFixed(2)}</ThemedText>
+            <ThemedText>₦{getSubtotal().toFixed(2)}</ThemedText>
           </View>
           {discount > 0 ? (
             <View style={styles.summaryRow}>
               <ThemedText style={{ color: theme.success }}>Discount</ThemedText>
-              <ThemedText style={{ color: theme.success }}>-${discount.toFixed(2)}</ThemedText>
+              <ThemedText style={{ color: theme.success }}>-₦{discount.toFixed(2)}</ThemedText>
             </View>
           ) : null}
           <View style={[styles.summaryRow, styles.totalRow]}>
             <ThemedText type="h3">Total</ThemedText>
             <ThemedText type="h3" style={{ color: theme.primary }}>
-              ${getTotal(discount).toFixed(2)}
+              ₦{getTotal(discount).toFixed(2)}
             </ThemedText>
           </View>
         </View>

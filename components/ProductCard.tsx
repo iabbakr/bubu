@@ -1,4 +1,6 @@
-import { View, StyleSheet, Pressable, Image } from "react-native";
+// components/ProductCard.tsx
+
+import { View, StyleSheet, Pressable, Image, Platform } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { Product } from "@/services/firebaseService";
 import { ThemedText } from "./ThemedText";
@@ -12,55 +14,138 @@ interface ProductCardProps {
 
 export function ProductCard({ product, onPress }: ProductCardProps) {
   const { theme } = useTheme();
-  
-  const discountedPrice = product.discount 
+
+  const finalPrice = product.discount
     ? product.price * (1 - product.discount / 100)
     : product.price;
+
+  const isNearExpiry = product.expiryDate
+    ? new Date(product.expiryDate) < new Date(Date.now() + 45 * 24 * 60 * 60 * 1000) // ~45 days
+    : false;
+
+  const isExpired = product.expiryDate
+    ? new Date(product.expiryDate) < new Date()
+    : false;
 
   return (
     <Pressable
       style={({ pressed }) => [
         styles.container,
-        { 
+        {
           backgroundColor: theme.cardBackground,
           borderColor: theme.border,
-          opacity: pressed ? 0.7 : 1
-        }
+          opacity: pressed ? 0.85 : 1,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          elevation: 4,
+        },
       ]}
       onPress={onPress}
     >
-      <Image 
-        source={{ uri: product.imageUrl || "https://via.placeholder.com/150" }}
-        style={styles.image}
-      />
-      {product.discount ? (
-        <View style={[styles.badge, { backgroundColor: theme.error }]}>
-          <ThemedText style={styles.badgeText} lightColor="#fff" darkColor="#fff">
-            -{product.discount}%
-          </ThemedText>
-        </View>
-      ) : null}
+      {/* Image + Badges */}
+      <View style={styles.imageWrapper}>
+        <Image
+          source={{ uri: product.imageUrl || "https://via.placeholder.com/300" }}
+          style={styles.image}
+          resizeMode="cover"
+        />
+
+        {/* Discount Badge */}
+        {product.discount ? (
+          <View style={[styles.discountBadge, { backgroundColor: theme.error }]}>
+            <ThemedText style={styles.badgeText}>SAVE {product.discount}%</ThemedText>
+          </View>
+        ) : null}
+
+        {/* Out of Stock / Expired Overlay */}
+        {(product.stock === 0 || isExpired) && (
+          <View style={styles.overlay}>
+            <ThemedText style={styles.overlayText}>
+              {isExpired ? "EXPIRED" : "OUT OF STOCK"}
+            </ThemedText>
+          </View>
+        )}
+      </View>
+
+      {/* Content */}
       <View style={styles.content}>
+        {/* Brand + Weight */}
+        {(product.brand || product.weight) && (
+          <ThemedText type="caption" style={{ color: theme.primary, marginBottom: 4 }}>
+            {product.brand} {product.weight ? `• ${product.weight}` : ""}
+          </ThemedText>
+        )}
+
+        {/* Product Name */}
         <ThemedText type="h4" numberOfLines={2} style={styles.name}>
           {product.name}
         </ThemedText>
+
+        {/* Subcategory Chip */}
+        {product.subcategory && (
+          <View style={[styles.chip, { backgroundColor: theme.backgroundSecondary }]}>
+            <ThemedText type="caption" style={{ fontSize: 11 }}>
+              {product.subcategory}
+            </ThemedText>
+          </View>
+        )}
+
+        {/* Info Badges Row */}
+        <View style={styles.badgesRow}>
+          {/* Prescription Badge */}
+          {product.isPrescriptionRequired && (
+            <View style={[styles.smallBadge, { backgroundColor: "#007AFF20" }]}>
+              <Feather name="file-text" size={12} color="#007AFF" />
+              <ThemedText type="caption" style={{ marginLeft: 4, color: "#007AFF", fontSize: 11 }}>
+                Rx Required
+              </ThemedText>
+            </View>
+          )}
+
+          {/* Expiring Soon Badge */}
+          {isNearExpiry && !isExpired && (
+            <View style={[styles.smallBadge, { backgroundColor: "#FF950020" }]}>
+              <Feather name="alert-triangle" size={12} color="#FF9500" />
+              <ThemedText type="caption" style={{ marginLeft: 4, color: "#FF9500", fontSize: 11 }}>
+                Expiring Soon
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
+        {/* Price Row */}
         <View style={styles.priceRow}>
-          <ThemedText type="h3" style={{ color: theme.primary }}>
-            ₦{discountedPrice.toFixed(2)}
+          <ThemedText type="h3" style={{ color: theme.primary, fontWeight: "700" }}>
+            ₦{Math.round(finalPrice).toLocaleString()}
           </ThemedText>
           {product.discount ? (
-            <ThemedText 
-              type="caption" 
-              style={[styles.originalPrice, { color: theme.textSecondary }]}
-            >
-              ${product.price.toFixed(2)}
+            <ThemedText type="caption" style={[styles.strike, { color: theme.textSecondary }]}>
+              ₦{Math.round(product.price).toLocaleString()}
             </ThemedText>
           ) : null}
         </View>
+
+        {/* Stock + Cart Icon */}
         <View style={styles.footer}>
-          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-            Stock: {product.stock}
-          </ThemedText>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Feather
+              name="package"
+              size={14}
+              color={product.stock > 0 ? theme.success : theme.error}
+            />
+            <ThemedText
+              type="caption"
+              style={{
+                marginLeft: 4,
+                color: product.stock > 0 ? theme.success : theme.error,
+              }}
+            >
+              {product.stock > 0 ? `${product.stock} left` : "Unavailable"}
+            </ThemedText>
+          </View>
+
           <Feather name="shopping-cart" size={18} color={theme.primary} />
         </View>
       </View>
@@ -70,47 +155,93 @@ export function ProductCard({ product, onPress }: ProductCardProps) {
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
+    borderRadius: BorderRadius.lg,
     overflow: "hidden",
     marginBottom: Spacing.lg,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  imageWrapper: {
+    position: "relative",
   },
   image: {
     width: "100%",
-    height: 150,
-    resizeMode: "cover",
+    height: 180,
+    backgroundColor: "#f5f5f5",
   },
-  badge: {
+  discountBadge: {
     position: "absolute",
-    top: Spacing.sm,
-    right: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.xs,
+    top: 12,
+    right: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
   },
   badgeText: {
+    color: "#fff",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "800",
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  overlayText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
   },
   content: {
     padding: Spacing.md,
   },
   name: {
-    marginBottom: Spacing.xs,
+    marginBottom: 6,
+    minHeight: 48,
+  },
+  chip: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginVertical: 6,
+  },
+  badgesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginVertical: 8,
+  },
+  smallBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.sm,
-    marginBottom: Spacing.xs,
+    gap: 8,
+    marginTop: 4,
   },
-  originalPrice: {
+  strike: {
     textDecorationLine: "line-through",
   },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: Spacing.xs,
+    marginTop: 10,
   },
 });

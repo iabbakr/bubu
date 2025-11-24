@@ -11,6 +11,9 @@ import AddProductScreen from "@/screens/AddProductScreen";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { getCommonScreenOptions } from "@/navigation/screenOptions";
+import MyOrdersScreen from "@/screens/MyOrdersScreen";
+import MyProductsScreen from "@/screens/MyProductsScreen";
+
 
 export type ProfileStackParamList = {
   Profile: undefined;
@@ -20,6 +23,8 @@ export type ProfileStackParamList = {
   SellerDashboard: undefined;
   AdminPanel: undefined;
   AddProduct: undefined;
+  MyProducts: undefined;
+  MyOrders: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -75,6 +80,20 @@ export default function ProfileStackNavigator() {
             name="AddProduct"
             component={AddProductScreen}
             options={{ title: "Add Product",
+              headerBackTitle: "Back",
+             }}
+          />
+          <Stack.Screen
+            name="MyOrders"
+            component={MyOrdersScreen}
+            options={{ title: "My Orders",
+              headerBackTitle: "Back",
+             }}
+          />
+          <Stack.Screen
+            name="MyProducts"
+            component={MyProductsScreen}
+            options={{ title: "My Products",
               headerBackTitle: "Back",
              }}
           />
