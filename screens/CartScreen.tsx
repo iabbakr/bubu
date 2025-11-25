@@ -40,63 +40,90 @@ export default function CartScreen() {
   };
 
   const handleCheckout = async () => {
-    if (!user) {
-      Alert.alert("Error", "Please sign in to checkout");
-      return;
-    }
+  if (!user) {
+    Alert.alert("Error", "Please sign in to checkout");
+    return;
+  }
 
-    if (items.length === 0) {
-      Alert.alert("Error", "Your cart is empty");
-      return;
-    }
+  if (items.length === 0) {
+    Alert.alert("Error", "Your cart is empty");
+    return;
+  }
 
-    if (!deliveryAddress.trim()) {
-      Alert.alert("Error", "Please enter a delivery address");
-      return;
-    }
+  if (!deliveryAddress.trim()) {
+    Alert.alert("Error", "Please enter a delivery address");
+    return;
+  }
 
-    const phoneRegex = /^[0-9]{10,15}$/;
+  const phoneRegex = /^[0-9]{10,15}$/;
   if (!phoneRegex.test(phoneNumber.trim())) {
     Alert.alert("Error", "Please enter a valid phone number");
     return;
   }
 
-    setLoading(true);
-    try {
-      const sellerId = items[0].sellerId;
-      const orderItems = items.map(item => ({
+  setLoading(true);
+  try {
+    // Group cart items by sellerId
+    const itemsBySeller = items.reduce((acc, item) => {
+      const sellerId = item.sellerId;
+      if (!acc[sellerId]) {
+        acc[sellerId] = [];
+      }
+      acc[sellerId].push(item);
+      return acc;
+    }, {} as Record<string, typeof items>);
+
+    const createdOrderIds: string[] = [];
+
+    // Create one order per seller
+    for (const [sellerId, sellerItems] of Object.entries(itemsBySeller)) {
+      const orderItems = sellerItems.map(item => ({
         productId: item.id,
         productName: item.name,
         quantity: item.quantity,
-        price: item.discount ? item.price * (1 - item.discount / 100) : item.price,
+        price: item.discount
+          ? item.price * (1 - item.discount / 100)
+          : item.price,
       }));
 
-      await firebaseService.createOrder(
+      // Create order for this seller
+      const order = await firebaseService.createOrder(
         user.uid,
         sellerId,
         orderItems,
         deliveryAddress,
-        discount,
+        0, // We'll handle global coupon separately or per-order
         phoneNumber
       );
 
-      if (couponCode) {
-        await firebaseService.applyCoupon(couponCode, user.uid);
-      }
-
-      clearCart();
-      Alert.alert(
-        "Success",
-        "Order placed successfully!",
-        [{ text: "OK", onPress: () => navigation.navigate("OrdersTab" as never) }]
-      );
-    } catch (error) {
-      Alert.alert("Error", "Failed to place order. Please try again.");
-    } finally {
-      setLoading(false);
+      createdOrderIds.push(order.id);
     }
-  };
 
+    // Handle coupon (optional strategies below)
+    if (couponCode && discount > 0) {
+      await firebaseService.applyCoupon(couponCode, user.uid);
+      // You may want to distribute discount across orders or apply only once
+    }
+
+    clearCart();
+    
+    Alert.alert(
+      "Success!",
+      `You have successfully placed ${Object.keys(itemsBySeller).length} order(s)!`,
+      [
+        {
+          text: "View Orders",
+          onPress: () => navigation.navigate("OrdersTab" as never),
+        },
+      ]
+    );
+  } catch (error: any) {
+    console.error("Checkout failed:", error);
+    Alert.alert("Checkout Failed", error.message || "Something went wrong. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
   const renderCartItem = (item: typeof items[0]) => {
     const itemPrice = item.discount 
       ? item.price * (1 - item.discount / 100)

@@ -11,7 +11,7 @@ import { Spacing, BorderRadius } from "../constants/theme";
 
 type RouteParams = { orderId: string };
 
-type OrderTrackingStatus = "acknowledged" | "enroute" | "ready_for_pickup" | null;
+type OrderTrackingStatus = "acknowledged" | "enroute" | "ready_for_pickup" ;
 
 export default function OrderDetailScreen() {
   const { theme } = useTheme();

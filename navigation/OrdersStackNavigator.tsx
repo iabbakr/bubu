@@ -8,10 +8,12 @@ import { getCommonScreenOptions } from "@/navigation/screenOptions";
 import { useTheme } from "@/hooks/useTheme";
 import OrderDetailScreen from "@/screens/OrderDetailScreen";
 import AdminDisputeScreen from "@/screens/AdminDisputeDashboard";
+import DisputeChatScreen from "@/screens/DisputeChatScreen";
 
 export type OrdersStackParamList = {
   Orders: undefined;
-  OrderDetailScreen: undefined;
+  OrderDetailScreen:  { orderId: string };
+  DisputeChatScreen:  { orderId: string };
   AdminDisputeScreen: { orderId: string };
 };
 
@@ -64,10 +66,10 @@ export default function OrdersStackNavigator() {
         }}
       />
       <Stack.Screen
-        name="AdminDispute"
-        component={AdminDisputeScreen}
+        name="DisputeChatScreen"
+        component={DisputeChatScreen}
         options={{
-          title: "Admin Dispute",
+          title: "Dispute Chat",
           headerRight: () => (
             <Pressable
               onPress={contactSupport}

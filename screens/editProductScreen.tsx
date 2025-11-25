@@ -1,5 +1,3 @@
-// screens/EditProductScreen.tsx
-
 import { useState } from "react";
 import {
   View,
@@ -15,7 +13,7 @@ import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
-import { Button } from "../components/Button"; // ← Using new Button
+import { Button } from "../components/Button"; // ← Updated Button
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { firebaseService, Product } from "../services/firebaseService";
@@ -245,9 +243,9 @@ export default function EditProductScreen() {
         </Button>
 
         <Button
-          variant="danger"
           onPress={handleDelete}
-          style={{ marginTop: 12 }}
+          disabled={loading}
+          style={{ marginTop: 12, backgroundColor: "#FF3B30" }}
         >
           Delete Product
         </Button>

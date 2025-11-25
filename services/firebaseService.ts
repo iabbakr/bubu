@@ -923,6 +923,8 @@ async createOrder(
       });
     }
 
+    
+
     // Mark dispute as resolved
     await updateDoc(orderRef, {
       disputeStatus: "resolved",
@@ -1121,5 +1123,25 @@ async createOrder(
     //   body: this.getTrackingMessage(status),
     //   data: { orderId, status }
     // });
-  },  
+  }, 
+  
+    // -----------------------------
+  // NOTIFICATION SETTINGS
+  // -----------------------------
+  async getUserSettings(userId: string) {
+    const ref = doc(db, "userSettings", userId);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : { notificationsEnabled: true };
+  },
+
+  async updateUserSettings(userId: string, settings: any) {
+    const ref = doc(db, "userSettings", userId);
+    return setDoc(ref, settings, { merge: true });
+  },
+
+  async clearPushToken(userId: string) {
+    const ref = doc(db, "pushTokens", userId);
+    return setDoc(ref, { token: null }, { merge: true });
+  },
+
 };

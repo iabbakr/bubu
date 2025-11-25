@@ -1,0 +1,609 @@
+import React, { useState } from "react";
+import { View, StyleSheet, Pressable, Text, Animated } from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { ThemedText } from "../components/ThemedText";
+import { TextInputField } from "../components/TextInputField";
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenKeyboardAwareScrollView } from "../components/ScreenKeyboardAwareScrollView";
+import { useAuth } from "../hooks/useAuth";
+import { useTheme } from "../hooks/useTheme";
+import { Spacing, BorderRadius } from "../constants/theme";
+import { LocationSelector } from "../components/LocationSelector";
+import { Location } from "../types/location";
+
+export default function AuthScreen() {
+  const { theme } = useTheme();
+  const { signIn, signUp } = useAuth();
+
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [gender, setGender] = useState<"male" | "female" | "other">("male");
+  const [selectedRole, setSelectedRole] = useState<"buyer" | "seller" | "admin">("buyer");
+  const [referralCode, setReferralCode] = useState("");
+  const [location, setLocation] = useState<Location | null>(null);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [sellerCategory, setSellerCategory] = useState<"supermarket" | "pharmacy">("supermarket");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validatePassword = (password: string) => {
+    return password.length >= 6;
+  };
+
+  const validatePhone = (phone: string) => {
+    if (!phone) return true; // Optional field
+    const phoneRegex = /^[0-9]{10,15}$/;
+    return phoneRegex.test(phone.replace(/[\s-]/g, ''));
+  };
+
+  const handleSubmit = async () => {
+    setError("");
+
+    // Validation
+    if (!email || !password) {
+      setError("Email and password are required");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    if (!validatePassword(password)) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+
+    if (isSignUp) {
+      if (!name.trim()) {
+        setError("Full name is required");
+        return;
+      }
+
+      if (name.trim().length < 2) {
+        setError("Name must be at least 2 characters");
+        return;
+      }
+
+      if (phone && !validatePhone(phone)) {
+        setError("Please enter a valid phone number (10-15 digits)");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setError("Passwords do not match");
+        return;
+      }
+
+      if (password.length < 8) {
+        setError("Password should be at least 8 characters for better security");
+        return;
+      }
+
+      if (!termsAccepted) {
+        setError("Please accept the terms and privacy policy");
+        return;
+      }
+
+      if (!location) {
+        setError("Please select your location (state and city)");
+        return;
+      }
+
+      if (selectedRole === "seller" && !sellerCategory) {
+        setError("Please select your seller category");
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      let success = false;
+      if (isSignUp) {
+        success = await signUp(
+          email.trim().toLowerCase(),
+          password,
+          selectedRole,
+          name.trim(),
+          phone.trim() || undefined,
+          gender,
+          referralCode.trim() || undefined,
+          location || undefined,
+          selectedRole === "seller" ? sellerCategory : undefined
+        );
+      } else {
+        success = await signIn(email.trim().toLowerCase(), password);
+      }
+
+      if (!success) {
+        setError(isSignUp ? "Failed to create account. Email may already be in use." : "Invalid email or password");
+      }
+    } catch (err: any) {
+      console.error("Auth error:", err);
+      setError(err?.message || "An error occurred. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderRoleButton = (role: typeof selectedRole, label: string, icon: string, description: string) => (
+    <Pressable
+      style={[
+        styles.roleButton,
+        {
+          backgroundColor: selectedRole === role ? theme.primary : theme.backgroundSecondary,
+          borderColor: selectedRole === role ? theme.primary : theme.border,
+        }
+      ]}
+      onPress={() => setSelectedRole(role)}
+    >
+      <View style={[
+        styles.roleIconContainer,
+        { backgroundColor: selectedRole === role ? theme.buttonText + "20" : theme.primary + "10" }
+      ]}>
+        <Feather
+          name={icon as any}
+          size={24}
+          color={selectedRole === role ? theme.buttonText : theme.primary}
+        />
+      </View>
+      <ThemedText
+        weight="bold"
+        style={{
+          marginTop: Spacing.sm,
+          color: selectedRole === role ? theme.buttonText : theme.text,
+          fontSize: 14,
+        }}
+      >
+        {label}
+      </ThemedText>
+      <ThemedText
+        type="caption"
+        style={{
+          marginTop: 2,
+          color: selectedRole === role ? theme.buttonText + "CC" : theme.textSecondary,
+          fontSize: 11,
+          textAlign: "center",
+        }}
+      >
+        {description}
+      </ThemedText>
+    </Pressable>
+  );
+
+  const renderGenderButton = (genderOption: typeof gender, label: string, icon: string) => (
+    <Pressable
+      key={genderOption}
+      onPress={() => setGender(genderOption)}
+      style={[
+        styles.genderButton,
+        {
+          borderColor: gender === genderOption ? theme.primary : theme.border,
+          backgroundColor: gender === genderOption ? theme.primary + "20" : theme.backgroundSecondary,
+        }
+      ]}
+    >
+      <Feather
+        name={icon as any}
+        size={18}
+        color={gender === genderOption ? theme.primary : theme.textSecondary}
+      />
+      <Text style={{
+        marginLeft: Spacing.xs,
+        color: gender === genderOption ? theme.primary : theme.textSecondary,
+        fontWeight: gender === genderOption ? "600" : "400",
+      }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+
+  return (
+    <ScreenKeyboardAwareScrollView>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={[styles.header, { backgroundColor: theme.primary + "10" }]}>
+          <View style={[styles.logoContainer, { backgroundColor: theme.primary }]}>
+            <Feather name="shopping-bag" size={48} color="#fff" />
+          </View>
+          <ThemedText type="h1" style={{ marginTop: Spacing.lg }}>
+            MarketHub
+          </ThemedText>
+          <ThemedText type="body" style={{ color: theme.textSecondary, marginTop: Spacing.xs, textAlign: "center" }}>
+            {isSignUp ? "Create your account to get started" : "Sign in to continue shopping"}
+          </ThemedText>
+        </View>
+
+        {/* Form */}
+        <View style={styles.form}>
+          {/* Toggle Tabs */}
+          <View style={[styles.tabContainer, { backgroundColor: theme.backgroundSecondary }]}>
+            <Pressable
+              style={[
+                styles.tab,
+                { backgroundColor: !isSignUp ? theme.primary : "transparent" }
+              ]}
+              onPress={() => {
+                setIsSignUp(false);
+                setError("");
+              }}
+            >
+              <ThemedText
+                weight="bold"
+                style={{ color: !isSignUp ? theme.buttonText : theme.textSecondary }}
+              >
+                Sign In
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.tab,
+                { backgroundColor: isSignUp ? theme.primary : "transparent" }
+              ]}
+              onPress={() => {
+                setIsSignUp(true);
+                setError("");
+              }}
+            >
+              <ThemedText
+                weight="bold"
+                style={{ color: isSignUp ? theme.buttonText : theme.textSecondary }}
+              >
+                Sign Up
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          {isSignUp && (
+            <>
+              {/* Name Input */}
+              <TextInputField
+                label="Full Name *"
+                value={name}
+                onChangeText={setName}
+                placeholder="John Doe"
+                leftIcon={<Feather name="user" size={20} color={theme.textSecondary} />}
+              />
+
+              {/* Phone Input */}
+              <TextInputField
+                label="Phone Number"
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="+234 801 234 5678"
+                keyboardType="phone-pad"
+                leftIcon={<Feather name="phone" size={20} color={theme.textSecondary} />}
+              />
+
+              {/* Gender Selection */}
+              <View style={{ marginBottom: Spacing.lg }}>
+                <ThemedText type="label" style={{ marginBottom: Spacing.sm }}>
+                  Gender *
+                </ThemedText>
+                <View style={styles.genderContainer}>
+                  {renderGenderButton("male", "Male", "user")}
+                  {renderGenderButton("female", "Female", "user")}
+                  {renderGenderButton("other", "Other", "users")}
+                </View>
+              </View>
+
+              {/* Role Selection */}
+              <View style={{ marginBottom: Spacing.lg }}>
+                <ThemedText type="label" style={{ marginBottom: Spacing.sm }}>
+                  I want to *
+                </ThemedText>
+                <View style={styles.roleContainer}>
+                  {renderRoleButton("buyer", "Buy", "shopping-cart", "Shop products")}
+                  {renderRoleButton("seller", "Sell", "briefcase", "Sell products")}
+                  {renderRoleButton("admin", "Manage", "shield", "Admin access")}
+                </View>
+              </View>
+
+              {/* Seller Category */}
+              {selectedRole === "seller" && (
+                <View style={{ marginBottom: Spacing.lg }}>
+                  <ThemedText type="label" style={{ marginBottom: Spacing.sm }}>
+                    Seller Category *
+                  </ThemedText>
+                  <View style={{ flexDirection: "row", gap: Spacing.md }}>
+                    <Pressable
+                      onPress={() => setSellerCategory("supermarket")}
+                      style={[
+                        styles.categoryButton,
+                        {
+                          backgroundColor: sellerCategory === "supermarket" ? theme.primary : theme.backgroundSecondary,
+                          borderColor: sellerCategory === "supermarket" ? theme.primary : theme.border,
+                        }
+                      ]}
+                    >
+                      <Feather
+                        name="shopping-bag"
+                        size={20}
+                        color={sellerCategory === "supermarket" ? theme.buttonText : theme.textSecondary}
+                      />
+                      <ThemedText
+                        style={{
+                          marginTop: Spacing.xs,
+                          color: sellerCategory === "supermarket" ? theme.buttonText : theme.text,
+                          fontWeight: sellerCategory === "supermarket" ? "600" : "400",
+                        }}
+                      >
+                        Supermarket
+                      </ThemedText>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setSellerCategory("pharmacy")}
+                      style={[
+                        styles.categoryButton,
+                        {
+                          backgroundColor: sellerCategory === "pharmacy" ? theme.primary : theme.backgroundSecondary,
+                          borderColor: sellerCategory === "pharmacy" ? theme.primary : theme.border,
+                        }
+                      ]}
+                    >
+                      <Feather
+                        name="heart"
+                        size={20}
+                        color={sellerCategory === "pharmacy" ? theme.buttonText : theme.textSecondary}
+                      />
+                      <ThemedText
+                        style={{
+                          marginTop: Spacing.xs,
+                          color: sellerCategory === "pharmacy" ? theme.buttonText : theme.text,
+                          fontWeight: sellerCategory === "pharmacy" ? "600" : "400",
+                        }}
+                      >
+                        Pharmacy
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {/* Location Selector */}
+              <LocationSelector
+                value={location}
+                onChange={setLocation}
+                label="Location (State & City) *"
+              />
+
+              {/* Referral Code */}
+              <TextInputField
+                label="Referral Code (Optional)"
+                value={referralCode}
+                onChangeText={setReferralCode}
+                placeholder="Enter referral code if you have one"
+                leftIcon={<Feather name="gift" size={20} color={theme.textSecondary} />}
+              />
+            </>
+          )}
+
+          {/* Email Input */}
+          <TextInputField
+            label="Email Address *"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="your.email@example.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            leftIcon={<Feather name="mail" size={20} color={theme.textSecondary} />}
+          />
+
+          {/* Password Input */}
+          <TextInputField
+            label="Password *"
+            value={password}
+            onChangeText={setPassword}
+            placeholder={isSignUp ? "At least 8 characters" : "Enter your password"}
+            secureTextEntry={!showPassword}
+            leftIcon={<Feather name="lock" size={20} color={theme.textSecondary} />}
+            rightIcon={
+              <Pressable onPress={() => setShowPassword(!showPassword)}>
+                <Feather name={showPassword ? "eye-off" : "eye"} size={20} color={theme.textSecondary} />
+              </Pressable>
+            }
+          />
+
+          {/* Confirm Password */}
+          {isSignUp && (
+            <TextInputField
+              label="Confirm Password *"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="Re-enter your password"
+              secureTextEntry={!showConfirm}
+              leftIcon={<Feather name="lock" size={20} color={theme.textSecondary} />}
+              rightIcon={
+                <Pressable onPress={() => setShowConfirm(!showConfirm)}>
+                  <Feather name={showConfirm ? "eye-off" : "eye"} size={20} color={theme.textSecondary} />
+                </Pressable>
+              }
+            />
+          )}
+
+          {/* Forgot Password */}
+          {!isSignUp && (
+            <Pressable style={styles.forgotPassword}>
+              <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                Forgot Password?
+              </ThemedText>
+            </Pressable>
+          )}
+
+          {/* Terms Checkbox */}
+          {isSignUp && (
+            <Pressable
+              onPress={() => setTermsAccepted(!termsAccepted)}
+              style={styles.termsContainer}
+            >
+              <View style={[
+                styles.checkbox,
+                {
+                  borderColor: termsAccepted ? theme.primary : theme.border,
+                  backgroundColor: termsAccepted ? theme.primary : "transparent",
+                }
+              ]}>
+                {termsAccepted && <Feather name="check" size={16} color="#fff" />}
+              </View>
+              <Text style={{ color: theme.text, flex: 1, fontSize: 13 }}>
+                I agree to the{" "}
+                <Text style={{ color: theme.primary, fontWeight: "600" }}>Terms & Conditions</Text>
+                {" "}and{" "}
+                <Text style={{ color: theme.primary, fontWeight: "600" }}>Privacy Policy</Text>
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Error Message */}
+          {error ? (
+            <View style={[styles.errorContainer, { backgroundColor: theme.error + "20", borderColor: theme.error }]}>
+              <Feather name="alert-circle" size={18} color={theme.error} />
+              <Text style={[styles.errorText, { color: theme.error }]}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* Submit Button */}
+          <PrimaryButton
+            title={isSignUp ? "Create Account" : "Sign In"}
+            onPress={handleSubmit}
+            loading={loading}
+            icon={<Feather name={isSignUp ? "user-plus" : "log-in"} size={20} color="#fff" />}
+          />
+
+          {/* Info Text for Sign Up */}
+          {isSignUp && (
+            <View style={[styles.infoBox, { backgroundColor: theme.primary + "10", borderColor: theme.primary + "30" }]}>
+              <Feather name="info" size={16} color={theme.primary} />
+              <ThemedText type="caption" style={{ color: theme.primary, marginLeft: Spacing.sm, flex: 1 }}>
+                By creating an account, you'll get access to exclusive deals and faster checkout.
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      </View>
+    </ScreenKeyboardAwareScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    alignItems: "center",
+    padding: Spacing["3xl"],
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.xl,
+  },
+  logoContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  form: { flex: 1 },
+  tabContainer: {
+    flexDirection: "row",
+    borderRadius: BorderRadius.md,
+    padding: 4,
+    marginBottom: Spacing.xl,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
+  },
+  roleContainer: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  roleButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+  },
+  roleIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  genderContainer: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  genderButton: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.md,
+    borderWidth: 2,
+    borderRadius: BorderRadius.md,
+  },
+  categoryButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+  },
+  termsContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginVertical: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 2,
+    borderRadius: 6,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  forgotPassword: {
+    alignSelf: "flex-end",
+    marginBottom: Spacing.lg,
+    marginTop: -Spacing.sm,
+  },
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
+    borderWidth: 1,
+  },
+  errorText: { flex: 1, fontSize: 13, fontWeight: "500" },
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.lg,
+    borderWidth: 1,
+  },
+});

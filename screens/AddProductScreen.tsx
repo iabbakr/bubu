@@ -71,59 +71,84 @@ export default function AddProductScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!user?.sellerCategory || !user.location) {
-      Alert.alert("Error", "Please complete your profile with location and seller type first.");
-      return;
-    }
+  if (!user?.sellerCategory || !user.location) {
+    Alert.alert("Error", "Please complete your profile with location and seller type first.");
+    return;
+  }
 
-    const trimmedName = name.trim();
-    const priceNum = Number(price);
-    const stockNum = Number(stock);
-    const discountNum = discount ? Number(discount) : 0;
+  const trimmedName = name.trim();
+  const trimmedDesc = description.trim();
 
-    if (!trimmedName || !description.trim() || !price || !stock || !image || !subcategory) {
-      Alert.alert("Missing Fields", "Please fill all required fields and upload an image.");
-      return;
-    }
+  // === IMPROVED VALIDATION ===
+  const priceNum = parseFloat(price);
+  const stockNum = parseInt(stock, 10);
+  const discountNum = discount.trim() === "" ? 0 : parseFloat(discount);
 
-    if (priceNum <= 0 || stockNum < 0 || discountNum < 0 || discountNum > 90) {
-      Alert.alert("Invalid Input", "Check price, stock, and discount values.");
-      return;
-    }
+  // Check for invalid numbers
+  if (!trimmedName || !trimmedDesc) {
+    Alert.alert("Missing Fields", "Name and description are required.");
+    return;
+  }
 
-    setLoading(true);
-    try {
-      const imageUrl = await uploadImage();
+  if (!price || isNaN(priceNum) || priceNum <= 0) {
+    Alert.alert("Invalid Price", "Please enter a valid price greater than 0.");
+    return;
+  }
 
-      await firebaseService.createProduct({
-        name: trimmedName,
-        description: description.trim(),
-        price: priceNum,
-        stock: stockNum,
-        category: user.sellerCategory,
-        subcategory,
-        imageUrl,
-        sellerId: user.uid,
-        location: user.location,
+  if (!stock || isNaN(stockNum) || stockNum < 0) {
+    Alert.alert("Invalid Stock", "Please enter a valid stock amount.");
+    return;
+  }
 
-        // Rich fields
-        brand: brand.trim() || undefined,
-        weight: weight.trim() || undefined,
-        discount: discountNum || undefined,
-        expiryDate: expiryDate.trim() || undefined,
-        isPrescriptionRequired: isPharmacy ? requiresPrescription : undefined,
-        isFeatured: false,
-        tags: [],
-      });
+  if (discount && (isNaN(discountNum) || discountNum < 0 || discountNum > 90)) {
+    Alert.alert("Invalid Discount", "Discount must be between 0 and 90%.");
+    return;
+  }
 
-      Alert.alert("Success!", "Product added successfully", [{ text: "OK", onPress: () => navigation.goBack() }]);
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Failed to add product. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!image) {
+    Alert.alert("Missing Image", "Please upload a product image.");
+    return;
+  }
+
+  if (!subcategory) {
+    Alert.alert("Missing Category", "Please select a subcategory.");
+    return;
+  }
+  // === END IMPROVED VALIDATION ===
+
+  setLoading(true);
+  try {
+    const imageUrl = await uploadImage();
+
+    await firebaseService.createProduct({
+      name: trimmedName,
+      description: trimmedDesc,
+      price: priceNum,
+      stock: stockNum,
+      category: user.sellerCategory,
+      subcategory,
+      imageUrl,
+      sellerId: user.uid,
+      location: user.location,
+      brand: brand.trim() || undefined,
+      weight: weight.trim() || undefined,
+      discount: discountNum > 0 ? discountNum : undefined,
+      expiryDate: expiryDate.trim() || undefined,
+      isPrescriptionRequired: isPharmacy ? requiresPrescription : undefined,
+      isFeatured: false,
+      tags: [],
+    });
+
+    Alert.alert("Success!", "Product added successfully", [
+      { text: "OK", onPress: () => navigation.goBack() }
+    ]);
+  } catch (err: any) {
+    console.error("Add product error:", err);
+    Alert.alert("Error", err.message || "Failed to add product.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const openPicker = () => setPickerVisible(true);
   const selectSubcategory = (cat: string) => {
@@ -173,19 +198,19 @@ export default function AddProductScreen() {
 
         <View style={styles.row}>
           <TextInput
-            placeholder="Price (₦) *"
-            value={price}
-            onChangeText={setPrice}
-            keyboardType="numeric"
-            style={[styles.input, styles.halfInput]}
-          />
+  placeholder="Price (₦) *"
+  value={price}
+  onChangeText={(text) => setPrice(text.replace(/[^0-9]/g, ""))}
+  keyboardType="numeric"
+  style={[styles.input, styles.halfInput]}
+/>
           <TextInput
-            placeholder="Stock *"
-            value={stock}
-            onChangeText={setStock}
-            keyboardType="numeric"
-            style={[styles.input, styles.halfInput]}
-          />
+  placeholder="Stock *"
+  value={stock}
+  onChangeText={(text) => setStock(text.replace(/[^0-9]/g, ""))}
+  keyboardType="numeric"
+  style={[styles.input, styles.halfInput]}
+/>
         </View>
 
         {/* Brand & Weight */}
@@ -206,12 +231,12 @@ export default function AddProductScreen() {
         />
 
         <TextInput
-          placeholder="Discount % (optional)"
-          value={discount}
-          onChangeText={setDiscount}
-          keyboardType="numeric"
-          style={styles.input}
-        />
+  placeholder="Discount % (optional)"
+  value={discount}
+  onChangeText={(text) => setDiscount(text.replace(/[^0-9]/g, ""))}
+  keyboardType="numeric"
+  style={styles.input}
+/>
 
         {/* Pharmacy Only Fields */}
         {isPharmacy && (

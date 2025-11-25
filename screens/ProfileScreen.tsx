@@ -205,10 +205,10 @@ export default function ProfileScreen() {
           <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
             Settings
           </ThemedText>
-          {renderMenuItem("bell", "Notifications", () => {})}
+          {renderMenuItem("bell", "Notifications", () => navigation.navigate("NotificationSetting" as never))}
           {renderMenuItem("lock", "Privacy & Security", () => {})}
           {renderMenuItem("globe", "Language", () => {})}
-          {renderMenuItem("moon", "Theme", () => {})}
+          {renderMenuItem("moon", "Theme", () => navigation.navigate("Theme" as never))}
         </View>
 
         {/* Support Section */}

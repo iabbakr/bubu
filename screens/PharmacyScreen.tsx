@@ -1,13 +1,15 @@
-// screens/PharmacyScreen.tsx
+// screens/PharmacyScreen.tsx (Enhanced with View Modes)
 
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, Alert, SectionList } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { ProductCard } from "../components/ProductCard";
+import { ViewModeSelector, ViewMode } from "../components/ViewModeSelector";
 import { LocationFilterWithCity } from "../components/LocationFilterWithCity";
 import { ScreenScrollView } from "../components/ScreenScrollView";
+import { SearchBar } from "../components/SearchBar";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { firebaseService, Product } from "../services/firebaseService";
@@ -15,7 +17,6 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
-import { SearchBar } from "../components/SearchBar";
 
 type PharmacyScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -24,17 +25,17 @@ type PharmacyScreenNavigationProp = NativeStackNavigationProp<
 
 export default function PharmacyScreen() {
   const { theme } = useTheme();
-  const navigation = useNavigation<PharmacyScreenNavigationProp>(); 
+  const navigation = useNavigation<PharmacyScreenNavigationProp>();
   const { user } = useAuth();
-  const { getTotalItems } = useCart();
-  
+  const { getTotalItems, addToCart } = useCart();
+
   const [products, setProducts] = useState<Product[]>([]);
-  const [search, setSearch] = useState("");               // <-- search state
+  const [search, setSearch] = useState("");
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedState, setSelectedState] = useState<string | null>(user?.location?.state || null);
   const [selectedCity, setSelectedCity] = useState<string | null>(user?.location?.city || null);
-
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   useEffect(() => {
     loadProducts();
@@ -42,8 +43,7 @@ export default function PharmacyScreen() {
 
   useEffect(() => {
     filterProducts();
-  }, [products, selectedState, selectedCity, search]);    // <-- search integrated
-
+  }, [products, selectedState, selectedCity, search]);
 
   const loadProducts = async () => {
     try {
@@ -59,46 +59,79 @@ export default function PharmacyScreen() {
   const filterProducts = () => {
     let filtered = products;
 
-    // FILTER BY STATE
     if (selectedState) {
-      filtered = filtered.filter(
-        p => p.location?.state === selectedState
-      );
+      filtered = filtered.filter(p => p.location?.state === selectedState);
     }
 
-    // FILTER BY CITY
     if (selectedCity) {
-      filtered = filtered.filter(
-        p => p.location?.city === selectedCity
-      );
+      filtered = filtered.filter(p => p.location?.city === selectedCity);
     }
 
-    // 🔍 SEARCH FILTER
     if (search.trim() !== "") {
+      const lowerSearch = search.toLowerCase();
       filtered = filtered.filter(
-        p =>
-          p.name.toLowerCase().includes(search.toLowerCase()) ||
-          p.description?.toLowerCase().includes(search.toLowerCase())
+        p => p.name.toLowerCase().includes(lowerSearch) ||
+             p.description?.toLowerCase().includes(lowerSearch)
       );
     }
 
     setFilteredProducts(filtered);
   };
 
+  const handleAddToCart = (product: Product) => {
+    if (!user) {
+      Alert.alert("Login Required", "Please sign in to add items to cart");
+      return;
+    }
+
+    if (product.isPrescriptionRequired) {
+      Alert.alert(
+        "Prescription Required",
+        "This medicine requires a prescription. You'll need to upload it during checkout.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Add Anyway", 
+            onPress: () => {
+              addToCart(product, 1);
+              Alert.alert("Added!", `${product.name} added to cart`);
+            }
+          }
+        ]
+      );
+      return;
+    }
+
+    addToCart(product, 1);
+    Alert.alert("Added!", `${product.name} added to cart`);
+  };
+
+  const getProductsByCategory = () => {
+    const categories = new Map<string, Product[]>();
+    
+    filteredProducts.forEach(product => {
+      const category = product.subcategory || "General Medicine";
+      if (!categories.has(category)) {
+        categories.set(category, []);
+      }
+      categories.get(category)!.push(product);
+    });
+
+    return Array.from(categories.entries()).map(([title, data]) => ({
+      title,
+      data,
+    }));
+  };
 
   const renderHeader = () => (
     <View style={styles.header}>
-      {/* 🔍 Search Bar — at top */}
       <SearchBar value={search} onChange={setSearch} />
 
       <View style={styles.headerTop}>
         <View>
           <ThemedText type="h2">Health & Wellness</ThemedText>
-          <ThemedText
-            type="caption"
-            style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
-          >
-            {selectedState
+          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
+            {selectedState 
               ? `Products in ${selectedState}`
               : "Medicines and health products you can trust"
             }
@@ -114,6 +147,8 @@ export default function PharmacyScreen() {
           setSelectedCity(city);
         }}
       />
+
+      <ViewModeSelector selected={viewMode} onChange={setViewMode} />
     </View>
   );
 
@@ -145,12 +180,104 @@ export default function PharmacyScreen() {
     </View>
   );
 
+  const renderCategoryView = () => {
+    const sections = getProductsByCategory();
+    
+    return (
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <View style={styles.listItem}>
+            <ProductCard
+              product={item}
+              onPress={() => navigation.navigate("ProductDetail", { productId: item.id })}
+              viewMode="list"
+              onAddToCart={() => handleAddToCart(item)}
+            />
+          </View>
+        )}
+        renderSectionHeader={({ section: { title, data } }) => (
+          <View style={[styles.categoryHeader, { backgroundColor: theme.background }]}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Feather name="package" size={20} color={theme.primary} />
+              <View style={{ marginLeft: Spacing.sm }}>
+                <ThemedText type="h3">{title}</ThemedText>
+                <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+                  {data.length} product{data.length !== 1 ? 's' : ''}
+                </ThemedText>
+              </View>
+            </View>
+          </View>
+        )}
+        contentContainerStyle={styles.categoryList}
+        stickySectionHeadersEnabled={true}
+      />
+    );
+  };
+
   const cartItemCount = getTotalItems();
 
   return (
-    <ScreenScrollView>
-      {renderHeader()}
-      
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
+      {viewMode === "category" ? (
+        <>
+          <View style={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg }}>
+            {renderHeader()}
+          </View>
+          {loading ? (
+            <View style={styles.loading}>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                Loading products...
+              </ThemedText>
+            </View>
+          ) : filteredProducts.length === 0 ? (
+            renderEmpty()
+          ) : (
+            renderCategoryView()
+          )}
+        </>
+      ) : (
+        <ScreenScrollView>
+          {renderHeader()}
+
+          {loading ? (
+            <View style={styles.loading}>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                Loading products...
+              </ThemedText>
+            </View>
+          ) : filteredProducts.length === 0 ? (
+            renderEmpty()
+          ) : viewMode === "list" ? (
+            <View style={styles.list}>
+              {filteredProducts.map(product => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onPress={() => navigation.navigate("ProductDetail", { productId: product.id })}
+                  viewMode="list"
+                  onAddToCart={() => handleAddToCart(product)}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.grid}>
+              {filteredProducts.map(product => (
+                <View key={product.id} style={styles.gridItem}>
+                  <ProductCard
+                    product={product}
+                    onPress={() => navigation.navigate("ProductDetail", { productId: product.id })}
+                    viewMode="grid"
+                    onAddToCart={() => handleAddToCart(product)}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+        </ScreenScrollView>
+      )}
+
       {cartItemCount > 0 && (
         <Pressable
           style={[styles.fab, { backgroundColor: theme.primary }]}
@@ -164,36 +291,13 @@ export default function PharmacyScreen() {
           </View>
         </Pressable>
       )}
-
-      {loading ? (
-        <View style={styles.loading}>
-          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-            Loading products...
-          </ThemedText>
-        </View>
-      ) : filteredProducts.length === 0 ? (
-        renderEmpty()
-      ) : (
-        <View style={styles.grid}>
-          {filteredProducts.map(product => (
-            <View key={product.id} style={styles.gridItem}>
-              <ProductCard 
-                product={product} 
-                onPress={() =>
-                  navigation.navigate("ProductDetail", { productId: product.id })
-                }
-              />
-            </View>
-          ))}
-        </View>
-      )}
-    </ScreenScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
   headerTop: {
     marginBottom: Spacing.md,
@@ -207,6 +311,20 @@ const styles = StyleSheet.create({
   gridItem: {
     width: "50%",
     paddingHorizontal: Spacing.sm,
+  },
+  list: {
+    paddingBottom: 100,
+  },
+  listItem: {
+    marginBottom: 0,
+  },
+  categoryList: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 100,
+  },
+  categoryHeader: {
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   empty: {
     alignItems: "center",
