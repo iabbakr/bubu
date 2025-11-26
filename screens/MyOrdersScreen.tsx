@@ -53,7 +53,7 @@ export default function MyOrdersScreen() {
       </View>
       <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
         {order.products.length} item(s) • {new Date(order.createdAt).toLocaleDateString()} • Waiting for buyer confirmation
-      </ThemedText>
+      </ThemedText>    
     </Pressable>
   );
 

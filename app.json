@@ -13,7 +13,7 @@
       "bundleIdentifier": "com.bubu.app"
     },
     "android": {
-      "package": "com.markethub.app",
+      "package": "com.bubu.app",
       "adaptiveIcon": {
         "backgroundColor": "#FFFAFA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

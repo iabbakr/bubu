@@ -89,7 +89,7 @@ export default function ProfileScreen() {
           <View style={[styles.authPrompt, { backgroundColor: theme.backgroundSecondary }]}>
             <Feather name="user" size={64} color={theme.textSecondary} />
             <ThemedText type="h2" style={{ marginTop: Spacing.lg, marginBottom: Spacing.md }}>
-              Welcome to MarketHub
+              Welcome to Bubu
             </ThemedText>
             <ThemedText type="caption" style={{ color: theme.textSecondary, textAlign: "center", marginBottom: Spacing.xl }}>
               Sign in or create an account to start shopping
@@ -105,34 +105,7 @@ export default function ProfileScreen() {
     <ScreenScrollView>
       <View style={styles.container}>
         {/* Profile Header */}
-        <View style={[styles.profileHeader, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-          <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
-            <ThemedText type="h1" lightColor="#fff" darkColor="#fff">
-              {user.name ? user.name[0].toUpperCase() : "U"}
-
-            </ThemedText>
-          </View>
-          <ThemedText type="h2" style={{ marginTop: Spacing.lg }}>
-            {user.name}
-          </ThemedText>
-          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
-            {user.email}
-          </ThemedText>
-          <View style={[styles.roleBadge, { backgroundColor: theme.secondary + "33" }]}>
-            <Feather 
-              name={
-                user.role === "admin" ? "shield" : 
-                user.role === "seller" ? "briefcase" : 
-                "shopping-cart"
-              } 
-              size={14} 
-              color={theme.primary} 
-            />
-            <ThemedText type="label" style={{ color: theme.primary, marginLeft: Spacing.xs }}>
-              {user.role.toUpperCase()}
-            </ThemedText>
-          </View>
-        </View>
+        
 
         {/* Wallet Preview Card */}
         {wallet && (
@@ -170,13 +143,7 @@ export default function ProfileScreen() {
             "Account Information", 
             () => navigation.navigate("AccountInfo" as never)
           )}
-          {renderMenuItem(
-            "credit-card", 
-            "Wallet", 
-            () => navigation.navigate("Wallet" as never),
-            true,
-            wallet ? `₦${wallet.balance.toFixed(2)}` : "Loading..."
-          )}
+          {renderMenuItem("shopping-cart", "Cart", () => navigation.navigate("Cart" as never))}
           {renderMenuItem("shopping-bag", "My Orders", () => {})}
           {renderMenuItem("heart", "Wishlist", () => {})}
         </View>

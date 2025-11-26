@@ -48,7 +48,7 @@ export function ProductCard({ product, onPress, viewMode = "grid", onAddToCart }
         {/* Left: Image */}
         <View style={styles.listImageWrapper}>
           <Image
-            source={{ uri: product.imageUrl || "https://via.placeholder.com/300" }}
+            source={{ uri: product.imageUrls?.[0] || "https://via.placeholder.com/300" }}
             style={styles.listImage}
             resizeMode="cover"
           />
@@ -70,19 +70,19 @@ export function ProductCard({ product, onPress, viewMode = "grid", onAddToCart }
         <View style={styles.listContent}>
           {/* Brand/Weight */}
           {product.brand && (
-            <ThemedText type="caption" style={{ color: theme.primary, marginBottom: 2 }}>
+            <ThemedText type="caption" style={{ color: theme.primary, marginBottom: 4 }}>
               {product.brand}
             </ThemedText>
           )}
 
           {/* Name */}
-          <ThemedText type="h4" numberOfLines={2} style={{ marginBottom: 4 }}>
+          <ThemedText type="h4" numberOfLines={2} style={{ marginBottom: 8 }}>
             {product.name}
           </ThemedText>
 
           {/* Subcategory */}
           {product.subcategory && (
-            <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: 8 }}>
+            <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: 4 }}>
               {product.subcategory}
             </ThemedText>
           )}
@@ -153,7 +153,7 @@ export function ProductCard({ product, onPress, viewMode = "grid", onAddToCart }
       {/* Image + Badges */}
       <View style={styles.imageWrapper}>
         <Image
-          source={{ uri: product.imageUrl || "https://via.placeholder.com/300" }}
+          source={{ uri: product.imageUrls?.[0] || "https://via.placeholder.com/300" }}
           style={styles.image}
           resizeMode="cover"
         />
@@ -440,6 +440,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    
   },
   listCartButton: {
     width: 36,

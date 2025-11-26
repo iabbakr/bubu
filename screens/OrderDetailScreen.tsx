@@ -1,4 +1,4 @@
-import { View, StyleSheet, ScrollView, Pressable, Alert, Modal, TextInput, Image } from "react-native";
+import { View, StyleSheet, ScrollView, Pressable, Alert, Modal, TextInput } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
@@ -10,8 +10,7 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 
 type RouteParams = { orderId: string };
-
-type OrderTrackingStatus = "acknowledged" | "enroute" | "ready_for_pickup" ;
+type OrderTrackingStatus = "acknowledged" | "enroute" | "ready_for_pickup";
 
 export default function OrderDetailScreen() {
   const { theme } = useTheme();
@@ -162,6 +161,7 @@ export default function OrderDetailScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
+
         {/* Order Header */}
         <View style={[styles.header, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <View style={{ flex: 1 }}>
@@ -190,26 +190,22 @@ export default function OrderDetailScreen() {
                   <View
                     style={[
                       styles.trackingIcon,
-                      {
-                        backgroundColor: step.completed ? theme.success : theme.backgroundSecondary,
-                      },
+                      { backgroundColor: step.completed ? theme.success : theme.backgroundSecondary }
                     ]}
                   >
-                    <Feather
-                      name={step.icon as any}
-                      size={20}
-                      color={step.completed ? "#fff" : theme.textSecondary}
-                    />
+                    <Feather name={step.icon as any} size={20} color={step.completed ? "#fff" : theme.textSecondary} />
                   </View>
+
                   {index < getTrackingSteps().length - 1 && (
                     <View
                       style={[
                         styles.trackingLine,
-                        { backgroundColor: step.completed ? theme.success : theme.border },
+                        { backgroundColor: step.completed ? theme.success : theme.border }
                       ]}
                     />
                   )}
                 </View>
+
                 <View style={{ flex: 1, marginLeft: Spacing.md }}>
                   <ThemedText
                     weight={step.active ? "bold" : "medium"}
@@ -234,6 +230,7 @@ export default function OrderDetailScreen() {
             <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
               Update Order Status
             </ThemedText>
+
             <View style={styles.trackingButtons}>
               {!order.trackingStatus && (
                 <PrimaryButton
@@ -242,6 +239,7 @@ export default function OrderDetailScreen() {
                   style={styles.trackingBtn}
                 />
               )}
+
               {order.trackingStatus === "acknowledged" && (
                 <PrimaryButton
                   title="Mark as En Route"
@@ -249,6 +247,7 @@ export default function OrderDetailScreen() {
                   style={styles.trackingBtn}
                 />
               )}
+
               {order.trackingStatus === "enroute" && (
                 <PrimaryButton
                   title="Ready for Pickup"
@@ -265,17 +264,20 @@ export default function OrderDetailScreen() {
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
             Order Items
           </ThemedText>
+
           {order.products.map((item, index) => (
             <View key={index} style={styles.productItem}>
               <View style={[styles.productIcon, { backgroundColor: theme.backgroundSecondary }]}>
                 <Feather name="box" size={20} color={theme.primary} />
               </View>
+
               <View style={{ flex: 1, marginLeft: Spacing.md }}>
                 <ThemedText weight="medium">{item.productName}</ThemedText>
                 <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
                   Quantity: {item.quantity} × ₦{item.price.toFixed(2)}
                 </ThemedText>
               </View>
+
               <ThemedText weight="bold" style={{ color: theme.primary }}>
                 ₦{(item.quantity * item.price).toFixed(2)}
               </ThemedText>
@@ -283,11 +285,12 @@ export default function OrderDetailScreen() {
           ))}
         </View>
 
-        {/* Delivery Information */}
+        {/* Delivery Info */}
         <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
             Delivery Information
           </ThemedText>
+
           <View style={styles.infoRow}>
             <Feather name="map-pin" size={18} color={theme.textSecondary} />
             <View style={{ flex: 1, marginLeft: Spacing.md }}>
@@ -299,6 +302,7 @@ export default function OrderDetailScreen() {
               </ThemedText>
             </View>
           </View>
+
           {order.phoneNumber && (
             <View style={[styles.infoRow, { marginTop: Spacing.md }]}>
               <Feather name="phone" size={18} color={theme.textSecondary} />
@@ -319,14 +323,17 @@ export default function OrderDetailScreen() {
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
             Payment Summary
           </ThemedText>
+
           <View style={styles.summaryRow}>
             <ThemedText>Subtotal</ThemedText>
             <ThemedText>₦{order.totalAmount.toFixed(2)}</ThemedText>
           </View>
+
           <View style={styles.summaryRow}>
             <ThemedText>Platform Fee (10%)</ThemedText>
             <ThemedText>₦{order.commission.toFixed(2)}</ThemedText>
           </View>
+
           <View style={[styles.summaryRow, styles.totalRow, { borderTopColor: theme.border }]}>
             <ThemedText type="h3">Total</ThemedText>
             <ThemedText type="h3" style={{ color: theme.primary }}>
@@ -335,7 +342,7 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
-        {/* Dispute Status */}
+        {/* Dispute Banner */}
         {order.disputeStatus === "open" && (
           <View style={[styles.disputeAlert, { backgroundColor: theme.warning + "20", borderColor: theme.warning }]}>
             <Feather name="alert-circle" size={24} color={theme.warning} />
@@ -350,47 +357,54 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Actions */}
+        {/* Action Buttons */}
         <View style={styles.actions}>
-          {isBuyer && order.status === "running" && order.trackingStatus === "ready_for_pickup" && (
-            <PrimaryButton
-              title="Confirm Delivery ✓"
-              onPress={handleConfirmDelivery}
-            />
-          )}
 
-          {(isBuyer || isSeller) && order.status === "running" && (
-            <>
-              {order.disputeStatus !== "open" && (
-                <PrimaryButton
-                  title="Open Dispute"
-                  onPress={() => setShowDisputeModal(true)}
-                  variant="outlined"
-                  style={{ marginTop: Spacing.sm }}
-                />
-              )}
-              {order.disputeStatus === "open" && (
-                <PrimaryButton
-                  title="View Dispute Chat"
-                  onPress={() => navigation.navigate("DisputeChatScreen", { orderId: order.id })}
-                  style={{ marginTop: Spacing.sm }}
-                />
-              )}
-            </>
-          )}
+          {/* Buyer Confirm Delivery */}
+          {isBuyer &&
+            order.status === "running" &&
+            order.trackingStatus === "ready_for_pickup" && (
+              <PrimaryButton title="Confirm Delivery ✓" onPress={handleConfirmDelivery} />
+            )}
 
-          {isSeller && order.status === "running" && (
-            <PrimaryButton
-              title="Cancel Order"
-              onPress={() => setShowCancelModal(true)}
-              variant="outlined"
-              style={{ marginTop: Spacing.sm }}
-            />
-          )}
+          {/* Buyer/Seller Open Dispute */}
+          {(isBuyer || isSeller) &&
+            order.status === "running" &&
+            order.disputeStatus !== "open" && (
+              <PrimaryButton
+                title="Open Dispute"
+                onPress={() => setShowDisputeModal(true)}
+                variant="outlined"
+                style={{ marginTop: Spacing.sm }}
+              />
+            )}
+
+          {/* Admin, Buyer, Seller View Dispute */}
+          {(isBuyer || isSeller || isAdmin) &&
+            order.disputeStatus === "open" && (
+              <PrimaryButton
+                title="View Dispute Chat"
+                onPress={() =>
+                  navigation.navigate("DisputeChatScreen", { orderId: order.id })
+                }
+                style={{ marginTop: Spacing.sm }}
+              />
+            )}
+
+          {/* Seller Cancel */}
+          {isSeller &&
+            order.status === "running" && (
+              <PrimaryButton
+                title="Cancel Order"
+                onPress={() => setShowCancelModal(true)}
+                variant="outlined"
+                style={{ marginTop: Spacing.sm }}
+              />
+            )}
         </View>
       </View>
 
-      {/* Cancel Modal */}
+      {/* CANCEL MODAL */}
       <Modal visible={showCancelModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
@@ -400,8 +414,16 @@ export default function OrderDetailScreen() {
                 <Feather name="x" size={24} color={theme.text} />
               </Pressable>
             </View>
+
             <TextInput
-              style={[styles.textArea, { borderColor: theme.border, color: theme.text, backgroundColor: theme.backgroundSecondary }]}
+              style={[
+                styles.textArea,
+                {
+                  borderColor: theme.border,
+                  color: theme.text,
+                  backgroundColor: theme.backgroundSecondary,
+                },
+              ]}
               value={cancelReason}
               onChangeText={setCancelReason}
               placeholder="Reason for cancellation..."
@@ -409,12 +431,17 @@ export default function OrderDetailScreen() {
               multiline
               numberOfLines={4}
             />
-            <PrimaryButton title="Confirm Cancellation" onPress={handleCancelOrder} style={{ marginTop: Spacing.md }} />
+
+            <PrimaryButton
+              title="Confirm Cancellation"
+              onPress={handleCancelOrder}
+              style={{ marginTop: Spacing.md }}
+            />
           </View>
         </View>
       </Modal>
 
-      {/* Dispute Modal */}
+      {/* DISPUTE MODAL */}
       <Modal visible={showDisputeModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
@@ -424,8 +451,16 @@ export default function OrderDetailScreen() {
                 <Feather name="x" size={24} color={theme.text} />
               </Pressable>
             </View>
+
             <TextInput
-              style={[styles.textArea, { borderColor: theme.border, color: theme.text, backgroundColor: theme.backgroundSecondary }]}
+              style={[
+                styles.textArea,
+                {
+                  borderColor: theme.border,
+                  color: theme.text,
+                  backgroundColor: theme.backgroundSecondary,
+                },
+              ]}
               value={disputeDetails}
               onChangeText={setDisputeDetails}
               placeholder="Describe the issue..."
@@ -433,7 +468,12 @@ export default function OrderDetailScreen() {
               multiline
               numberOfLines={6}
             />
-            <PrimaryButton title="Submit Dispute" onPress={handleOpenDispute} style={{ marginTop: Spacing.md }} />
+
+            <PrimaryButton
+              title="Submit Dispute"
+              onPress={handleOpenDispute}
+              style={{ marginTop: Spacing.md }}
+            />
           </View>
         </View>
       </Modal>
@@ -444,24 +484,88 @@ export default function OrderDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: 40 },
-  header: { padding: Spacing.lg, borderRadius: BorderRadius.md, borderWidth: 1, marginBottom: Spacing.lg, flexDirection: "row", alignItems: "flex-start" },
-  statusBadge: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: BorderRadius.sm },
-  section: { padding: Spacing.lg, borderRadius: BorderRadius.md, borderWidth: 1, marginBottom: Spacing.lg },
+  header: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginBottom: Spacing.lg,
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  statusBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+  },
+  section: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginBottom: Spacing.lg,
+  },
   trackingStep: { flexDirection: "row", marginBottom: Spacing.lg },
   trackingIconContainer: { alignItems: "center" },
-  trackingIcon: { width: 44, height: 44, borderRadius: 22, justifyContent: "center", alignItems: "center" },
+  trackingIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   trackingLine: { width: 2, flex: 1, marginVertical: 4 },
   trackingButtons: { gap: Spacing.sm },
   trackingBtn: { marginBottom: 0 },
-  productItem: { flexDirection: "row", alignItems: "center", paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: "#e5e5e5" },
-  productIcon: { width: 44, height: 44, borderRadius: BorderRadius.sm, justifyContent: "center", alignItems: "center" },
+  productItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e5e5",
+  },
+  productIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   infoRow: { flexDirection: "row", alignItems: "flex-start" },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: Spacing.sm },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: Spacing.sm,
+  },
   totalRow: { borderTopWidth: 1, paddingTop: Spacing.md, marginTop: Spacing.sm },
-  disputeAlert: { flexDirection: "row", padding: Spacing.lg, borderRadius: BorderRadius.md, borderWidth: 1, marginBottom: Spacing.lg },
+  disputeAlert: {
+    flexDirection: "row",
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginBottom: Spacing.lg,
+  },
   actions: { marginTop: Spacing.lg },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  modalContent: { borderTopLeftRadius: BorderRadius.lg, borderTopRightRadius: BorderRadius.lg, padding: Spacing.xl, maxHeight: "80%" },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: Spacing.lg },
-  textArea: { borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md, minHeight: 100, textAlignVertical: "top" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    maxHeight: "80%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.lg,
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    minHeight: 100,
+    textAlignVertical: "top",
+  },
 });

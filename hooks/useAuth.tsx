@@ -7,13 +7,11 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from "firebase/firestore";
+import { Location } from "../types/location";
 
 export type UserRole = "admin" | "seller" | "buyer";
 
-export interface Location {
-  state: string;
-  city: string;
-}
+
 
 export interface UserData {
   uid: string;

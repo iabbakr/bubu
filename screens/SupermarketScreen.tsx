@@ -7,7 +7,7 @@ import { useNavigation } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { ProductCard } from "../components/ProductCard";
 import { ViewModeSelector, ViewMode } from "../components/ViewModeSelector";
-import { LocationFilterWithCity } from "../components/LocationFilterWithCity";
+import { LocationFilterWithCityAndArea } from "../components/LocationFilterWithCity";
 import { ScreenScrollView } from "../components/ScreenScrollView";
 import { SearchBar } from "../components/SearchBar";
 import { useCart } from "../hooks/useCart";
@@ -35,6 +35,7 @@ export default function SupermarketScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedState, setSelectedState] = useState<string | null>(user?.location?.state || null);
   const [selectedCity, setSelectedCity] = useState<string | null>(user?.location?.city || null);
+  const [selectedArea, setSelectedArea] = useState<string | null>(user?.location?.area || null);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   useEffect(() => {
@@ -43,7 +44,7 @@ export default function SupermarketScreen() {
 
   useEffect(() => {
     filterProducts();
-  }, [products, selectedState, selectedCity, search]);
+  }, [products, selectedState, selectedCity, selectedArea, search]);
 
   const loadProducts = async () => {
     try {
@@ -65,6 +66,10 @@ export default function SupermarketScreen() {
 
     if (selectedCity) {
       filtered = filtered.filter(p => p.location?.city === selectedCity);
+    }
+
+    if (selectedArea) {
+      filtered = filtered.filter(p => p.location?.area === selectedArea);
     }
 
     if (search.trim() !== "") {
@@ -112,7 +117,11 @@ export default function SupermarketScreen() {
           <ThemedText type="h2">Fresh Groceries</ThemedText>
           <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
             {selectedState 
-              ? `Products in ${selectedState}`
+              ? selectedCity
+                ? selectedArea
+                  ? `Products in ${selectedArea}, ${selectedCity}`
+                  : `Products in ${selectedCity}, ${selectedState}`
+                : `Products in ${selectedState}`
               : "Quality products delivered to your door"
             }
           </ThemedText>
@@ -121,12 +130,14 @@ export default function SupermarketScreen() {
 
       <SearchBar value={search} onChange={setSearch} />
 
-      <LocationFilterWithCity
+      <LocationFilterWithCityAndArea
         selectedState={selectedState}
         selectedCity={selectedCity}
-        onChange={(state, city) => {
+        selectedArea={selectedArea}
+        onChange={(state, city, area) => {
           setSelectedState(state);
           setSelectedCity(city);
+          setSelectedArea(area);
         }}
       />
 
@@ -138,24 +149,25 @@ export default function SupermarketScreen() {
     <View style={styles.empty}>
       <Feather name="map-pin" size={64} color={theme.textSecondary} />
       <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
-        No products in {selectedState || "this area"}
+        No products in {selectedArea || selectedCity || selectedState || "this area"}
       </ThemedText>
       <ThemedText type="caption" style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
         {selectedState 
-          ? "Try selecting a different state"
+          ? "Try selecting a different location"
           : "Check back later for new items"
         }
       </ThemedText>
-      {selectedState && (
+      {(selectedState || selectedCity || selectedArea) && (
         <Pressable
           style={[styles.clearFilter, { backgroundColor: theme.primary }]}
           onPress={() => {
             setSelectedState(null);
             setSelectedCity(null);
+            setSelectedArea(null);
           }}
         >
           <ThemedText lightColor="#fff" darkColor="#fff">
-            View All States
+            View All Locations
           </ThemedText>
         </Pressable>
       )}

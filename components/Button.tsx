@@ -79,6 +79,7 @@ export function Button({
   );
 }
 
+
 const styles = StyleSheet.create({
   button: {
     height: Spacing.buttonHeight,

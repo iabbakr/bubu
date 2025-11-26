@@ -15,12 +15,10 @@ import {
   addDoc,
   query,
   where,
+  onSnapshot,
   orderBy,
 } from "firebase/firestore";
 import { emailService } from "../lib/resend";
-
-import { onSnapshot } from "firebase/firestore";
-
 
 
 
@@ -29,6 +27,7 @@ export type UserRole = "admin" | "seller" | "buyer";
 export interface Location {
   state: string;
   city: string;
+  area: string;
 }
 
 export interface User {
@@ -53,7 +52,7 @@ export interface Product {
   price: number;
   category: "supermarket" | "pharmacy";
   subcategory?: string;
-  imageUrl: string;
+  imageUrls: string | string[];
   sellerId: string;
   stock: number;
   discount?: number;
@@ -127,6 +126,7 @@ export interface Transaction {
   amount: number;
   description: string;
   timestamp: number;
+  status?: "pending" | "completed";
 }
 
 export interface Coupon {
@@ -178,6 +178,21 @@ export const firebaseService = {
       pendingBalance: 0,
       transactions: [],
     });
+
+   // ── SEND ROLE-SPECIFIC WELCOME EMAIL ──
+try {
+  if (role === "seller") {
+    await emailService.sendSellerWelcomeEmail(email.trim(), name.trim());
+    console.log("Seller welcome email sent to", email);
+  } else {
+    // buyer or admin → use buyer template (or make admin separate if needed)
+    await emailService.sendBuyerWelcomeEmail(email.trim(), name.trim());
+    console.log("Buyer welcome email sent to", email);
+  }
+} catch (emailError) {
+  console.error("Failed to send welcome email:", emailError);
+  // Don't fail signup because of email
+}
 
     return user;
   },
@@ -294,7 +309,7 @@ export const firebaseService = {
       description: product.description,
       price: product.price,
       category: product.category,
-      imageUrl: product.imageUrl,
+      imageUrls: product.imageUrls,
       sellerId: product.sellerId,
       stock: product.stock,
       location: product.location,
@@ -347,7 +362,7 @@ export const firebaseService = {
     const allowedFields = [
     "name", "description", "price", "stock", "subcategory",
     "brand", "weight", "expiryDate", "isPrescriptionRequired",
-    "discount", "isFeatured", "tags", "imageUrl"
+    "discount", "isFeatured", "tags", "imageUrls"
   ];
 
     allowedFields.forEach((field) => {
@@ -616,7 +631,7 @@ async createOrder(
 
     // Remove from seller's pending balance
     const amount = order.totalAmount - order.commission;
-    sellerWallet.pendingBalance -= amount;
+    sellerWallet.pendingBalance = Math.max(0, sellerWallet.pendingBalance - amount);
     sellerWallet.transactions.unshift({
       id: Date.now().toString(),
       type: "debit",
@@ -853,102 +868,143 @@ async createOrder(
 
    // ADMIN RESOLVES DISPUTE
 
-  async sendDisputeMessage(orderId: string, senderId: string, senderRole: "buyer" | "seller" | "admin", message: string) {
+  async sendDisputeMessage(
+  orderId: string,
+  senderId: string,
+  senderRole: "buyer" | "seller" | "admin",
+  message: string
+): Promise<string> {
   const ref = await addDoc(collection(db, "orders", orderId, "disputeChat"), {
     senderId,
     senderRole,
-    message,
+    message: message.trim(),
     timestamp: Date.now(),
   });
 
   await updateDoc(doc(db, "orders", orderId), {
     updatedAt: Date.now(),
   });
+
+  return ref.id;
 },
 
 
   // ADMIN RESOLVES DISPUTE
-  async resolveDispute(
-    orderId: string,
-    adminId: string,
-    resolution: "refund_buyer" | "release_to_seller",
-    adminNotes?: string
-  ): Promise<void> {
-    // Verify admin
-    const adminDoc = await getDoc(doc(db, "users", adminId));
-    if (!adminDoc.exists() || adminDoc.data().role !== "admin") {
-      throw new Error("Unauthorized: Only admin can resolve disputes");
-    }
+async resolveDispute(
+  orderId: string,
+  adminId: string,
+  resolution: "refund_buyer" | "release_to_seller",
+  adminNotes?: string
+): Promise<void> {
+  // Verify admin
+  const adminDoc = await getDoc(doc(db, "users", adminId));
+  if (!adminDoc.exists() || adminDoc.data()?.role !== "admin") {
+    throw new Error("Unauthorized: Only admin can resolve disputes");
+  }
 
-    const orderRef = doc(db, "orders", orderId);
-    const orderSnap = await getDoc(orderRef);
+  const orderRef = doc(db, "orders", orderId);
+  const orderSnap = await getDoc(orderRef);
+  if (!orderSnap.exists()) throw new Error("Order not found");
 
-    if (!orderSnap.exists()) throw new Error("Order not found");
+  const order = orderSnap.data() as Order;
+  if (order.disputeStatus !== "open") {
+    throw new Error("No open dispute for this order");
+  }
 
-    const order = orderSnap.data() as Order;
+  const updates: any = {
+    disputeStatus: "resolved",
+    adminNotes: adminNotes?.trim() || null,
+    resolvedByAdmin: true,
+    adminResolution: resolution === "refund_buyer" ? "cancelled" : "delivered",
+    updatedAt: Date.now(),
+  };
 
-    if (order.disputeStatus !== "open") {
-      throw new Error("No open dispute for this order");
-    }
+  if (resolution === "refund_buyer") {
+    // Full refund to buyer + reverse commission
+    updates.status = "cancelled";
 
-    if (resolution === "refund_buyer") {
-      // Refund to buyer
-      await this.cancelOrderBySeller(
-        orderId,
-        order.sellerId,
-        `Admin resolved dispute in favor of buyer. ${adminNotes || ""}`
-      );
-    } else {
-      // Release to seller
-      const amount = order.totalAmount - order.commission;
-      const sellerWallet = await this.getWallet(order.sellerId);
+    const buyerWallet = await this.getWallet(order.buyerId);
+    const sellerWallet = await this.getWallet(order.sellerId);
 
-      sellerWallet.balance += amount;
-      sellerWallet.pendingBalance -= amount;
-      sellerWallet.transactions.unshift({
+    // Refund buyer full amount
+    buyerWallet.balance += order.totalAmount;
+    buyerWallet.transactions.unshift({
+      id: Date.now().toString(),
+      type: "credit",
+      amount: order.totalAmount,
+      description: `Refund: Admin resolved dispute in your favor - Order #${orderId.slice(-6)}`,
+      timestamp: Date.now(),
+    });
+    await this.updateWallet(buyerWallet);
+
+    // Remove from seller's pending
+    sellerWallet.pendingBalance -= (order.totalAmount - order.commission);
+    sellerWallet.transactions.unshift({
+      id: Date.now().toString(),
+      type: "debit",
+      amount: order.totalAmount - order.commission,
+      description: `Dispute lost: Refunded to buyer (Admin resolution) - Order #${orderId.slice(-6)}`,
+      timestamp: Date.now(),
+    });
+    await this.updateWallet(sellerWallet);
+
+    // Refund commission to admin wallet
+    const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
+    if (!adminUsers.empty) {
+      const adminWallet = await this.getWallet(adminUsers.docs[0].id);
+      adminWallet.balance -= order.commission;
+      adminWallet.transactions.unshift({
         id: Date.now().toString(),
-        type: "credit",
-        amount,
-        description: `Admin resolved dispute - Payment released for order #${orderId.slice(-6)}`,
+        type: "debit",
+        amount: order.commission,
+        description: `Commission reversed: Dispute resolved for buyer - Order #${orderId.slice(-6)}`,
         timestamp: Date.now(),
       });
-
-      await this.updateWallet(sellerWallet);
-
-      await updateDoc(orderRef, {
-        status: "delivered",
-        disputeStatus: "resolved",
-        adminNotes,
-        updatedAt: Date.now(),
-      });
+      await this.updateWallet(adminWallet);
     }
+  } else {
+    // Release payment to seller
+    updates.status = "delivered";
 
-    
+    const sellerWallet = await this.getWallet(order.sellerId);
+    const amountToRelease = order.totalAmount - order.commission;
 
-    // Mark dispute as resolved
-    await updateDoc(orderRef, {
-      disputeStatus: "resolved",
-      adminNotes,
-      updatedAt: Date.now(),
+    sellerWallet.pendingBalance -= amountToRelease;
+    sellerWallet.balance += amountToRelease;
+    sellerWallet.transactions.unshift({
+      id: Date.now().toString(),
+      type: "credit",
+      amount: amountToRelease,
+      description: `Payment released: Admin resolved dispute in your favor - Order #${orderId.slice(-6)}`,
+      timestamp: Date.now(),
     });
+    await this.updateWallet(sellerWallet);
+  }
 
-    // Notify both parties
-    const buyerDoc = await getDoc(doc(db, "users", order.buyerId));
-    const sellerDoc = await getDoc(doc(db, "users", order.sellerId));
+  // Apply all updates atomically
+  await updateDoc(orderRef, updates);
 
-    if (buyerDoc.exists() && sellerDoc.exists()) {
-      const buyer = buyerDoc.data();
-      const seller = sellerDoc.data();
+  // Notify both parties
+  const [buyerDoc, sellerDoc] = await Promise.all([
+    getDoc(doc(db, "users", order.buyerId)),
+    getDoc(doc(db, "users", order.sellerId)),
+  ]);
 
-      await emailService.sendDisputeResolved(
-        buyer.email,
-        seller.email,
-        orderId,
-        resolution,
-        adminNotes || ""
-      );
-    }
-  },
+  if (buyerDoc.exists() && sellerDoc.exists()) {
+    const buyer = buyerDoc.data()!;
+    const seller = sellerDoc.data()!;
+
+    await emailService.sendDisputeResolved(
+      buyer.email,
+      buyer.name,
+      seller.email,
+      seller.name,
+      orderId,
+      resolution,
+      adminNotes || "No additional notes."
+    );
+  }
+},
 
   // Legacy method for backward compatibility
   async updateOrderStatus(orderId: string, status: Order["status"]) {
@@ -1144,4 +1200,13 @@ async createOrder(
     return setDoc(ref, { token: null }, { merge: true });
   },
 
+   listenToOrder(orderId: string, callback: (order: Order) => void) {
+  return onSnapshot(doc(db, "orders", orderId), (snap) => {
+    if (snap.exists()) {
+      callback(snap.data() as Order);
+    }
+  });
+},
+
 };
+

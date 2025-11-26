@@ -1,3 +1,4 @@
+// screens/DisputeChatScreen.tsx
 import { useEffect, useState, useRef } from "react";
 import {
   View,
@@ -8,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Text,
 } from "react-native";
 import { useRoute, RouteProp } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
@@ -22,8 +24,10 @@ type RouteParams = {
 };
 
 export default function DisputeChatScreen() {
-  const route = useRoute<RouteProp<{ params: RouteParams }, "params">>();
-  const { orderId } = route.params;
+  // safer route param read (guard against undefined params)
+  const route = useRoute<RouteProp<Record<string, RouteParams>, string>>();
+  const orderId = (route.params as RouteParams | undefined)?.orderId;
+
   const { user } = useAuth();
   const { theme } = useTheme();
 
@@ -31,37 +35,79 @@ export default function DisputeChatScreen() {
   const [newMessage, setNewMessage] = useState("");
   const [order, setOrder] = useState<Order | null>(null);
   const [sending, setSending] = useState(false);
+  const [loadingOrder, setLoadingOrder] = useState(true);
 
-  const flatListRef = useRef<FlatList<DisputeMessage>>(null);
+  const flatListRef = useRef<FlatList<DisputeMessage> | null>(null);
+
+  // helper: safely convert various timestamp shapes to JS Date
+  const toDate = (ts: any) => {
+    if (!ts) return null;
+    // Firestore Timestamp has toDate()
+    if (typeof ts?.toDate === "function") return ts.toDate();
+    // If it's seconds/nanoseconds
+    if (typeof ts === "object" && typeof ts.seconds === "number") {
+      return new Date(ts.seconds * 1000);
+    }
+    // number (ms)
+    if (typeof ts === "number") return new Date(ts);
+    // ISO string
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? null : d;
+  };
 
   // Listen for live chat messages
   useEffect(() => {
     if (!orderId) return;
-    
+
     const unsub = firebaseService.listenToDisputeMessages(orderId, (msgs) => {
-      setMessages(msgs);
-      
-      // Auto-scroll to bottom when new messages arrive
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      // ensure msgs is an array and sort by timestamp (defensive)
+      const safeMsgs = Array.isArray(msgs) ? msgs.slice() : [];
+      safeMsgs.sort((a, b) => {
+        const da = toDate(a.timestamp)?.getTime() ?? 0;
+        const db = toDate(b.timestamp)?.getTime() ?? 0;
+        return da - db;
+      });
+
+      setMessages(safeMsgs);
+
+      // Auto-scroll to bottom after messages set (guard: only when there are messages)
+      if (safeMsgs.length > 0) {
+        // small delay to let FlatList render
+        setTimeout(() => {
+          try {
+            flatListRef.current?.scrollToEnd?.({ animated: true });
+          } catch (e) {
+            // fallback: scroll to last index
+            flatListRef.current?.scrollToIndex?.({ index: safeMsgs.length - 1, animated: true });
+          }
+        }, 100);
+      }
     });
-    
-    return unsub;
+
+    return () => {
+      unsub?.();
+    };
   }, [orderId]);
 
   // Load order details
   useEffect(() => {
     const loadOrder = async () => {
       if (!orderId) return;
-      const orderData = await firebaseService.getOrder(orderId);
-      setOrder(orderData);
+      setLoadingOrder(true);
+      try {
+        const orderData = await firebaseService.getOrder(orderId);
+        setOrder(orderData);
+      } catch (err) {
+        console.error("Error loading order:", err);
+      } finally {
+        setLoadingOrder(false);
+      }
     };
     loadOrder();
   }, [orderId]);
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !user) return;
+    if (!newMessage.trim() || !user || !orderId) return;
 
     setSending(true);
     try {
@@ -72,6 +118,10 @@ export default function DisputeChatScreen() {
         newMessage.trim()
       );
       setNewMessage("");
+      // optimistic UI: scroll after sending
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd?.({ animated: true });
+      }, 80);
     } catch (error) {
       console.error("Error sending message:", error);
       Alert.alert("Error", "Failed to send message");
@@ -97,18 +147,18 @@ export default function DisputeChatScreen() {
           onPress: async () => {
             try {
               await firebaseService.resolveDispute(
-                orderId,
+                orderId!,
                 user.uid,
                 resolution,
                 "Resolved via dispute chat"
               );
               Alert.alert("Success", "Dispute resolved successfully");
-              
+
               // Refresh order status
-              const updatedOrder = await firebaseService.getOrder(orderId);
+              const updatedOrder = await firebaseService.getOrder(orderId!);
               setOrder(updatedOrder);
             } catch (err: any) {
-              Alert.alert("Error", err.message || "Failed to resolve dispute");
+              Alert.alert("Error", err?.message || "Failed to resolve dispute");
             }
           },
         },
@@ -117,7 +167,7 @@ export default function DisputeChatScreen() {
   };
 
   const getRoleColor = (role: string) => {
-    switch(role) {
+    switch (role) {
       case "admin": return theme.error;
       case "seller": return theme.warning;
       case "buyer": return theme.primary;
@@ -126,9 +176,10 @@ export default function DisputeChatScreen() {
   };
 
   const getRoleBadge = (role: string) => {
+    const color = getRoleColor(role);
     return (
-      <View style={[styles.roleBadge, { backgroundColor: getRoleColor(role) + "20" }]}>
-        <ThemedText type="caption" style={{ color: getRoleColor(role), fontWeight: "600" }}>
+      <View style={[styles.roleBadge, { backgroundColor: `${color}20` }]}>
+        <ThemedText type="caption" style={{ color, fontWeight: "600" }}>
           {role.toUpperCase()}
         </ThemedText>
       </View>
@@ -138,6 +189,10 @@ export default function DisputeChatScreen() {
   const renderMessage = ({ item }: { item: DisputeMessage }) => {
     const isCurrentUser = item.senderId === user?.uid;
     const isAdmin = item.senderRole === "admin";
+    const date = toDate(item.timestamp);
+    const timeLabel = date
+      ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : "";
 
     return (
       <View
@@ -150,16 +205,16 @@ export default function DisputeChatScreen() {
           style={[
             styles.messageBubble,
             {
-              backgroundColor: isCurrentUser 
-                ? theme.primary 
-                : isAdmin 
-                ? theme.error + "20" 
-                : theme.backgroundSecondary,
+              backgroundColor: isCurrentUser
+                ? theme.primary
+                : isAdmin
+                  ? `${theme.error}20`
+                  : theme.backgroundSecondary,
             },
           ]}
         >
           {!isCurrentUser && getRoleBadge(item.senderRole)}
-          
+
           <ThemedText
             style={{
               color: isCurrentUser ? "#fff" : theme.text,
@@ -168,7 +223,7 @@ export default function DisputeChatScreen() {
           >
             {item.message}
           </ThemedText>
-          
+
           <ThemedText
             type="caption"
             style={{
@@ -177,10 +232,7 @@ export default function DisputeChatScreen() {
               alignSelf: "flex-end",
             }}
           >
-            {new Date(item.timestamp).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {timeLabel}
           </ThemedText>
         </View>
       </View>
@@ -191,17 +243,18 @@ export default function DisputeChatScreen() {
     <View style={[styles.headerInfo, { backgroundColor: theme.backgroundSecondary }]}>
       <Feather name="alert-circle" size={20} color={theme.warning} />
       <View style={{ flex: 1, marginLeft: Spacing.md }}>
-        <ThemedText weight="bold">Order #{order?.id.slice(-6)}</ThemedText>
+        <ThemedText weight="bold">Order #{order?.id?.slice(-6) ?? "—"}</ThemedText>
         <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
-          Dispute Status: {order?.disputeStatus?.toUpperCase()}
+          Dispute Status: {order?.disputeStatus?.toUpperCase() ?? "N/A"}
         </ThemedText>
       </View>
     </View>
   );
 
-  if (!user || !order) {
+  // Wait for user and order to be loaded before showing UI
+  if (!user || loadingOrder || !order) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
         <ThemedText>Loading dispute chat...</ThemedText>
       </View>
     );
@@ -225,7 +278,7 @@ export default function DisputeChatScreen() {
               Refund Buyer
             </ThemedText>
           </Pressable>
-          
+
           <Pressable
             style={[styles.resolveBtn, { backgroundColor: theme.success }]}
             onPress={() => resolveDispute("release_to_seller")}
@@ -242,16 +295,21 @@ export default function DisputeChatScreen() {
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id ?? String(toDate(item.timestamp)?.getTime() ?? Math.random())}
         renderItem={renderMessage}
         ListHeaderComponent={renderHeader}
         contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={() => {
+          if (messages.length > 0) {
+            flatListRef.current?.scrollToEnd?.({ animated: true });
+          }
+        }}
+        keyboardShouldPersistTaps="handled"
       />
 
       {/* Dispute Resolved Notice */}
       {order.disputeStatus === "resolved" && (
-        <View style={[styles.resolvedNotice, { backgroundColor: theme.success + "20", borderColor: theme.success }]}>
+        <View style={[styles.resolvedNotice, { backgroundColor: `${theme.success}20`, borderColor: theme.success }]}>
           <Feather name="check-circle" size={20} color={theme.success} />
           <View style={{ flex: 1, marginLeft: Spacing.md }}>
             <ThemedText weight="bold" style={{ color: theme.success }}>
@@ -296,7 +354,7 @@ export default function DisputeChatScreen() {
             disabled={!newMessage.trim() || sending}
           >
             {sending ? (
-              <ThemedText style={{ color: "#fff" }}>...</ThemedText>
+              <Text style={{ color: "#fff" }}>...</Text>
             ) : (
               <Feather name="send" size={20} color="#fff" />
             )}

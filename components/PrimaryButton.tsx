@@ -8,6 +8,7 @@ interface PrimaryButtonProps {
   onPress: () => void;
   loading?: boolean;
   style?: any; // Add this
+  textStyle?: any;
   disabled?: boolean;
   variant?: "primary" | "secondary" | "outlined";
 }
@@ -17,7 +18,9 @@ export function PrimaryButton({
   onPress, 
   loading = false, 
   disabled = false,
-  variant = "primary" 
+  variant = "primary",
+  style,
+  textStyle,
 }: PrimaryButtonProps) {
   const { theme } = useTheme();
 

@@ -31,9 +31,14 @@ export async function initializePayment(
   try {
     const res = await axios.post(
       `${PAYSTACK_BASE_URL}/transaction/initialize`,
-      { email, amount: amount * 100, currency: "NGN" },
-      { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } }
-    );
+  { 
+    email, 
+    amount: amount * 100, 
+    currency: "NGN",
+    callback_url: "https://your-bubu.com/payment-callback" // Or use a custom scheme
+  },
+  { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } }
+);
 
     if (!res.data.status || !res.data.data) throw new Error(res.data.message);
 
@@ -78,7 +83,26 @@ export async function verifyPayment(reference: string, userId: string) {
       if (!userSnap.exists()) throw new Error("User not found");
 
       const currentBalance = userSnap.data()?.balance || 0;
-      await updateDoc(userRef, { balance: currentBalance + txnSnap.data().amount });
+const walletRef = doc(db, "wallets", userId);
+const walletSnap = await getDoc(walletRef);
+
+if (walletSnap.exists()) {
+  const currentTransactions = walletSnap.data()?.transactions || [];
+  await updateDoc(walletRef, {
+    balance: currentBalance + txnSnap.data().amount,
+    transactions: [
+      ...currentTransactions,
+      {
+        id: reference,
+        type: "credit",
+        amount: txnSnap.data().amount,
+        description: "Wallet Top-up via Paystack",
+        timestamp: Date.now(),
+        reference: reference
+      }
+    ]
+  });
+}
 
       return { success: true, message: "Wallet credited successfully" };
     } else {
@@ -169,3 +193,7 @@ export async function withdrawToBank(userId: string, amount: number) {
     throw new Error(err.response?.data?.message || "Withdrawal failed.");
   }
 }
+
+
+
+// Important NoteThe callback URL *} https://your-bubu.com/payment-callback in your paystack.ts file needs to be a real URL or you need to use a custom URL scheme. For React Native, you might want to use:*}

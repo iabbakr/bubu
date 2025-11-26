@@ -54,8 +54,8 @@ export default function AuthScreen() {
         setError("Please accept the terms and privacy policy");
         return;
       }
-      if (!location) {
-        setError("Please select your location");
+      if (!location || !location.state || !location.city || !location.area) {
+        setError("Please select your complete location (State, City, and Area)");
         return;
       }
       if (selectedRole === "seller" && !sellerCategory) {
@@ -197,25 +197,37 @@ export default function AuthScreen() {
               {/* Seller Category */}
               {selectedRole === "seller" && (
                 <View style={{ marginBottom: Spacing.md }}>
-                  <ThemedText type="label" style={{ marginBottom: 5 }}>Seller Category</ThemedText>
+                  <ThemedText type="label" style={{ marginBottom: 5 }}>SELLER CATEGORY</ThemedText>
                   <View style={{ flexDirection: "row", gap: 10 }}>
                     <Pressable
                       onPress={() => setSellerCategory("supermarket")}
                       style={[
                         styles.catBtn,
-                        sellerCategory === "supermarket" && { backgroundColor: theme.primary + "20", borderColor: theme.primary },
+                        {
+                          borderColor: theme.border,
+                          backgroundColor: sellerCategory === "supermarket" ? theme.primary + "20" : "transparent",
+                        },
+                        sellerCategory === "supermarket" && { borderColor: theme.primary },
                       ]}
                     >
-                      <ThemedText>Supermarket</ThemedText>
+                      <ThemedText style={{ color: sellerCategory === "supermarket" ? theme.primary : theme.text }}>
+                        Supermarket
+                      </ThemedText>
                     </Pressable>
                     <Pressable
                       onPress={() => setSellerCategory("pharmacy")}
                       style={[
                         styles.catBtn,
-                        sellerCategory === "pharmacy" && { backgroundColor: theme.primary + "20", borderColor: theme.primary },
+                        {
+                          borderColor: theme.border,
+                          backgroundColor: sellerCategory === "pharmacy" ? theme.primary + "20" : "transparent",
+                        },
+                        sellerCategory === "pharmacy" && { borderColor: theme.primary },
                       ]}
                     >
-                      <ThemedText>Pharmacy</ThemedText>
+                      <ThemedText style={{ color: sellerCategory === "pharmacy" ? theme.primary : theme.text }}>
+                        Pharmacy
+                      </ThemedText>
                     </Pressable>
                   </View>
                 </View>
@@ -231,8 +243,17 @@ export default function AuthScreen() {
               <LocationSelector
                 value={location}
                 onChange={setLocation}
-                label="Location (State & City)"
+                label="Location (State, City & Area)"
               />
+              
+              {location && (
+                <View style={[styles.locationPreview, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
+                  <Feather name="map-pin" size={16} color={theme.primary} />
+                  <ThemedText type="caption" style={{ marginLeft: Spacing.sm, color: theme.textSecondary }}>
+                    Selected: {location.state}, {location.city}, {location.area}
+                  </ThemedText>
+                </View>
+              )}
             </>
           )}
 
@@ -358,6 +379,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: BorderRadius.md,
     alignItems: "center",
+  },
+  locationPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.md,
   },
   termsContainer: {
     flexDirection: "row",

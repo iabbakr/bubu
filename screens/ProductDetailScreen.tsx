@@ -1,7 +1,7 @@
-// screens/ProductDetailScreen.tsx
+// screens/ProductDetailScreen.tsx - FIXED
 
-import { View, StyleSheet, Image, Pressable, Alert, Platform } from "react-native";
-import { useState, useEffect } from "react";
+import { View, StyleSheet, Image, Pressable, Alert, ScrollView } from "react-native";
+import { useState, useEffect, useRef } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
@@ -25,6 +25,9 @@ export default function ProductDetailScreen() {
   const [product, setProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadProduct();
@@ -33,7 +36,7 @@ export default function ProductDetailScreen() {
   const loadProduct = async () => {
     try {
       const products = await firebaseService.getProducts();
-      const found = products.find(p => p.id === route.params?.productId);
+      const found = products.find((p) => p.id === route.params?.productId);
       setProduct(found || null);
     } catch (error) {
       console.error("Error loading product:", error);
@@ -43,10 +46,31 @@ export default function ProductDetailScreen() {
     }
   };
 
+  // ✅ FIXED: Normalize imageUrls to always be an array
+// ✅ FIXED: Normalize imageUrls to always be an array
+const getImageUrls = (product: Product | null): string[] => {
+  if (!product) return [];
+
+  const imageUrls = product.imageUrls as string | string[] | undefined;
+
+  if (Array.isArray(imageUrls)) {
+    return imageUrls.filter(url => url && url.trim() !== '');
+  }
+
+  if (typeof imageUrls === 'string' && imageUrls.trim() !== '') {
+    return [imageUrls];
+  }
+
+  return [];
+};
+
+
   if (loading) {
     return (
       <ScreenScrollView contentContainerStyle={styles.center}>
-        <ThemedText type="h4" style={{ color: theme.textSecondary }}>Loading product...</ThemedText>
+        <ThemedText type="h4" style={{ color: theme.textSecondary }}>
+          Loading product...
+        </ThemedText>
       </ScreenScrollView>
     );
   }
@@ -62,6 +86,7 @@ export default function ProductDetailScreen() {
     );
   }
 
+  const imageUrls = getImageUrls(product);
   const finalPrice = product.discount
     ? product.price * (1 - product.discount / 100)
     : product.price;
@@ -96,26 +121,75 @@ export default function ProductDetailScreen() {
     }
 
     addToCart(product, quantity);
-    Alert.alert(
-      "Added to Cart!",
-      `${quantity} × ${product.name} added to your cart`,
-      [
-        { text: "Continue Shopping", style: "cancel" },
-        { text: "Go to Cart", onPress: () => navigation.navigate("Cart") },
-      ]
-    );
+    Alert.alert("Added to Cart!", `${quantity} × ${product.name} added to your cart`, [
+      { text: "Continue Shopping", style: "cancel" },
+      { text: "Go to Cart", onPress: () => navigation.navigate("Cart") },
+    ]);
+  };
+
+  const handleScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const width = event.nativeEvent.layoutMeasurement.width || 1;
+    const index = Math.round(contentOffsetX / width);
+    
+    if (index >= 0 && index < imageUrls.length) {
+      setCurrentImageIndex(index);
+    }
   };
 
   return (
     <ScreenScrollView>
       <View style={styles.container}>
-        {/* Product Image */}
-        <View style={styles.imageContainer}>
-          <Image
-            source={{ uri: product.imageUrl || "https://via.placeholder.com/400" }}
-            style={styles.image}
-            resizeMode="cover"
-          />
+        {/* Image Gallery - FIXED */}
+        <View style={styles.imageGalleryContainer}>
+          <ScrollView
+            ref={scrollViewRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={handleScroll}
+            style={styles.imageGallery}
+          >
+            {imageUrls.length > 0 ? (
+              imageUrls.map((url, index) => (
+                <Image
+                  key={index}
+                  source={{ uri: url }}
+                  style={styles.image}
+                  resizeMode="cover"
+                  onError={(e) => {
+                    console.log("Image load error:", url, e.nativeEvent.error);
+                  }}
+                />
+              ))
+            ) : (
+              // Fallback placeholder if no images
+              <View style={[styles.image, styles.placeholderImage]}>
+                <Feather name="image" size={60} color="#ccc" />
+                <ThemedText type="caption" style={{ marginTop: 12, color: "#999" }}>
+                  No image available
+                </ThemedText>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Image Indicators - only show if multiple images */}
+          {imageUrls.length > 1 && (
+            <View style={styles.indicatorContainer}>
+              {imageUrls.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.dot,
+                    {
+                      backgroundColor:
+                        index === currentImageIndex ? theme.primary : theme.textSecondary + "50",
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+          )}
 
           {/* Discount Badge */}
           {product.discount ? (
@@ -229,10 +303,7 @@ export default function ProductDetailScreen() {
           <View style={styles.quantitySection}>
             <ThemedText type="h4">Quantity</ThemedText>
             <View style={styles.quantityControls}>
-              <Pressable
-                onPress={() => setQuantity(Math.max(1, quantity - 1))}
-                style={styles.qtyBtn}
-              >
+              <Pressable onPress={() => setQuantity(Math.max(1, quantity - 1))} style={styles.qtyBtn}>
                 <Feather name="minus" size={20} color={theme.text} />
               </Pressable>
               <ThemedText type="h3" style={styles.qtyText}>{quantity}</ThemedText>
@@ -276,8 +347,24 @@ export default function ProductDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  imageContainer: { position: "relative" },
-  image: { width: "100%", height: 340, backgroundColor: "#f0f0f0" },
+  imageGalleryContainer: { position: "relative" },
+  imageGallery: { height: 340 },
+  image: { width: 390, height: 340, backgroundColor: "#f0f0f0" }, // Fixed width for proper scrolling
+  placeholderImage: { justifyContent: "center", alignItems: "center" },
+  indicatorContainer: {
+    position: "absolute",
+    bottom: 12,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   discountBadge: {
     position: "absolute",
     top: 16,
@@ -285,6 +372,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    zIndex: 10,
   },
   badgeText: { color: "#fff", fontWeight: "800", fontSize: 13 },
   outOfStockOverlay: {
@@ -292,6 +380,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 10,
   },
   outOfStockText: { color: "#fff", fontSize: 24, fontWeight: "bold" },
   content: { padding: Spacing.xl },

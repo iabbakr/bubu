@@ -1,4 +1,4 @@
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "../components/ThemedText";
@@ -7,6 +7,14 @@ import { firebaseService, User, Wallet, Order } from "../services/firebaseServic
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
+import { useNavigation } from "@react-navigation/native";
+import { ProfileStackParamList } from "@/navigation/ProfileStackNavigator"; // adjust path
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
+
+type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
+
+
 
 export default function AdminPanelScreen() {
   const { theme } = useTheme();
@@ -15,6 +23,8 @@ export default function AdminPanelScreen() {
   const [users, setUsers] = useState<User[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
+
 
   useEffect(() => {
     if (user && user.role === "admin") {
@@ -80,6 +90,26 @@ export default function AdminPanelScreen() {
         <ThemedText type="h2" style={{ marginBottom: Spacing.lg }}>
           Admin Panel
         </ThemedText>
+        <Pressable
+  onPress={() => {
+    if (orders.length > 0) {
+      // Navigate to AdminDisputeScreen using the first order's ID
+      navigation.navigate("AdminDispute", { orderId: orders[0].id });
+    } else {
+      alert("No orders available");
+    }
+  }}
+  style={{
+    padding: Spacing.md,
+    backgroundColor: theme.primary,
+    borderRadius: BorderRadius.md,
+    marginVertical: Spacing.md,
+    alignItems: "center",
+  }}
+>
+  <ThemedText style={{ color: "white" }}>Go to Admin Dispute</ThemedText>
+</Pressable>
+
 
         <View style={[styles.revenueCard, { backgroundColor: theme.success }]}>
           <ThemedText type="caption" lightColor="#fff" darkColor="#fff" style={{ opacity: 0.9 }}>
@@ -106,7 +136,10 @@ export default function AdminPanelScreen() {
         <View style={styles.section}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
             Recent Transactions
+            
           </ThemedText>
+          
+
           {adminWallet && adminWallet.transactions.length > 0 ? (
             <View style={[styles.transactionsList, { backgroundColor: theme.backgroundSecondary }]}>
               {adminWallet.transactions.slice(-5).reverse().map((transaction, index) => (

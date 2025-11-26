@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "./ThemedText";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
-import { getAllStates, getCitiesByState } from "../types/location";
+import { getAllStates, getCitiesByState, getAreasByCity } from "../types/location";
 import { Location } from "../types/location";
 
 interface LocationSelectorProps {
@@ -17,22 +17,42 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
   const { theme } = useTheme();
   const [selectedState, setSelectedState] = useState<string | null>(value?.state || null);
   const [selectedCity, setSelectedCity] = useState<string | null>(value?.city || null);
-  const [showModal, setShowModal] = useState<"state" | "city" | null>(null);
+  const [selectedArea, setSelectedArea] = useState<string | null>(value?.area || null);
+  const [showModal, setShowModal] = useState<"state" | "city" | "area" | null>(null);
 
   const states = getAllStates();
   const cities = selectedState ? getCitiesByState(selectedState) : [];
+  const areas = selectedState && selectedCity ? getAreasByCity(selectedState, selectedCity) : [];
 
   useEffect(() => {
     if (selectedState && !cities.includes(selectedCity || "")) {
       setSelectedCity(null);
+      setSelectedArea(null);
     }
   }, [selectedState]);
 
-  const handleConfirmCity = () => {
-    if (selectedState && selectedCity) {
-      onChange({ state: selectedState, city: selectedCity });
+  useEffect(() => {
+    if (selectedCity && !areas.includes(selectedArea || "")) {
+      setSelectedArea(null);
+    }
+  }, [selectedCity]);
+
+  const handleConfirmArea = () => {
+    if (selectedState && selectedCity && selectedArea) {
+      onChange({ state: selectedState, city: selectedCity, area: selectedArea });
       setShowModal(null);
     }
+  };
+
+  const getDisplayText = () => {
+    if (selectedState && selectedCity && selectedArea) {
+      return `${selectedState}, ${selectedCity}, ${selectedArea}`;
+    } else if (selectedState && selectedCity) {
+      return `${selectedState}, ${selectedCity}`;
+    } else if (selectedState) {
+      return selectedState;
+    }
+    return "Select location";
   };
 
   return (
@@ -45,7 +65,7 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
       >
         <Feather name="map-pin" size={18} color={theme.primary} />
         <ThemedText style={{ marginLeft: Spacing.sm, flex: 1 }}>
-          {selectedState && selectedCity ? `${selectedState}, ${selectedCity}` : "Select location"}
+          {getDisplayText()}
         </ThemedText>
         <Feather name="chevron-down" size={18} color={theme.textSecondary} />
       </Pressable>
@@ -73,6 +93,8 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
                   ]}
                   onPress={() => {
                     setSelectedState(state);
+                    setSelectedCity(null);
+                    setSelectedArea(null);
                     setShowModal("city");
                   }}
                 >
@@ -92,6 +114,9 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
             <View style={styles.modalHeader}>
+              <Pressable onPress={() => setShowModal("state")}>
+                <Feather name="chevron-left" size={24} color={theme.text} />
+              </Pressable>
               <ThemedText type="h3">Select City</ThemedText>
               <Pressable onPress={() => setShowModal(null)}>
                 <Feather name="x" size={24} color={theme.text} />
@@ -108,7 +133,11 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
                       borderBottomColor: theme.border,
                     },
                   ]}
-                  onPress={() => setSelectedCity(city)}
+                  onPress={() => {
+                    setSelectedCity(city);
+                    setSelectedArea(null);
+                    setShowModal("area");
+                  }}
                 >
                   <ThemedText style={{ color: city === selectedCity ? theme.primary : theme.text, fontWeight: city === selectedCity ? "600" : "400" }}>
                     {city}
@@ -117,10 +146,47 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
                 </Pressable>
               ))}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* AREA SELECTION */}
+      <Modal visible={showModal === "area"} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}>
+              <Pressable onPress={() => setShowModal("city")}>
+                <Feather name="chevron-left" size={24} color={theme.text} />
+              </Pressable>
+              <ThemedText type="h3">Select Area</ThemedText>
+              <Pressable onPress={() => setShowModal(null)}>
+                <Feather name="x" size={24} color={theme.text} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.list}>
+              {areas.map((area) => (
+                <Pressable
+                  key={area}
+                  style={[
+                    styles.listItem,
+                    {
+                      backgroundColor: area === selectedArea ? theme.primary + "20" : "transparent",
+                      borderBottomColor: theme.border,
+                    },
+                  ]}
+                  onPress={() => setSelectedArea(area)}
+                >
+                  <ThemedText style={{ color: area === selectedArea ? theme.primary : theme.text, fontWeight: area === selectedArea ? "600" : "400" }}>
+                    {area}
+                  </ThemedText>
+                  {area === selectedArea && <Feather name="check" size={20} color={theme.primary} />}
+                </Pressable>
+              ))}
+            </ScrollView>
             <Pressable
-              style={[styles.confirmButton, { backgroundColor: theme.primary }]}
-              onPress={handleConfirmCity}
-              disabled={!selectedCity}
+              style={[styles.confirmButton, { backgroundColor: theme.primary, opacity: selectedArea ? 1 : 0.5 }]}
+              onPress={handleConfirmArea}
+              disabled={!selectedArea}
             >
               <ThemedText style={{ color: "#fff", textAlign: "center" }}>Confirm</ThemedText>
             </Pressable>

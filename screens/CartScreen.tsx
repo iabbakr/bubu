@@ -134,7 +134,10 @@ export default function CartScreen() {
         key={item.id}
         style={[styles.cartItem, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
       >
-        <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+        <Image 
+          source={{ uri: item.imageUrls[0] || "https://via.placeholder.com/80" }} 
+          style={styles.itemImage} 
+        />
         <View style={styles.itemDetails}>
           <ThemedText type="h4" numberOfLines={2}>
             {item.name}

@@ -151,3 +151,63 @@ export interface UserData {
   location?: Location;
   createdAt: number;
 }
+
+
+
+
+
+
+3rd 
+
+
+
+match /orders/{orderId}/disputeChat/{msg} {
+  allow read: if request.auth != null &&
+              (resource.data.senderId == request.auth.uid ||
+               get(/databases/$(database)/documents/orders/$(orderId)).data.buyerId == request.auth.uid ||
+               get(/databases/$(database)/documents/orders/$(orderId)).data.sellerId == request.auth.uid ||
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+  allow create: if request.auth != null && 
+                [get(/databases/$(database)/documents/orders/$(orderId)).data.buyerId,
+                 get(/databases/$(database)/documents/orders/$(orderId)).data.sellerId,
+                 request.auth.uid].hasAny([request.resource.data.senderId]) ||
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+}
+
+
+
+// Add to firestore.rules
+match /supportChats/{chatId} {
+  // Users can read their own chats
+  allow read: if request.auth != null && (
+    resource.data.userId == request.auth.uid ||
+    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+  );
+  
+  // Users can create their own chats
+  allow create: if request.auth != null &&
+    request.resource.data.userId == request.auth.uid;
+  
+  // Admins can update any chat, users can only close their own
+  allow update: if request.auth != null && (
+    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+    (resource.data.userId == request.auth.uid && request.resource.data.status == 'closed')
+  );
+  
+  match /messages/{messageId} {
+    // Users can read messages in their chats
+    allow read: if request.auth != null && (
+      get(/databases/$(database)/documents/supportChats/$(chatId)).data.userId == request.auth.uid ||
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+    );
+    
+    // Users and admins can create messages
+    allow create: if request.auth != null && (
+      request.resource.data.senderId == request.auth.uid
+    );
+    
+    // Admins can update messages (for read status)
+    allow update: if request.auth != null &&
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+  }
+}

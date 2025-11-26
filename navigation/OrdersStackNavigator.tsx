@@ -1,8 +1,9 @@
 // navigation/OrdersStackNavigator.tsx
 
-import { Pressable, Alert } from "react-native";
+import { Pressable } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import OrdersScreen from "@/screens/OrdersScreen";
 import { getCommonScreenOptions } from "@/navigation/screenOptions";
 import { useTheme } from "@/hooks/useTheme";
@@ -12,8 +13,8 @@ import DisputeChatScreen from "@/screens/DisputeChatScreen";
 
 export type OrdersStackParamList = {
   Orders: undefined;
-  OrderDetailScreen:  { orderId: string };
-  DisputeChatScreen:  { orderId: string };
+  OrderDetailScreen: { orderId: string };
+  DisputeChatScreen: { orderId: string };
   AdminDisputeScreen: { orderId: string };
 };
 
@@ -21,31 +22,13 @@ const Stack = createNativeStackNavigator<OrdersStackParamList>();
 
 export default function OrdersStackNavigator() {
   const { theme, isDark } = useTheme();
+  const navigation = useNavigation();
 
-  const contactSupport = () => {
-    Alert.alert(
-      "Contact Support",
-      "How would you like to reach out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Email Support",
-          onPress: () => {
-            Alert.alert(
-              "Email Support",
-              "Send your query to: support@markethub.com",
-              [{ text: "OK" }]
-            );
-          }
-        },
-        {
-          text: "Live Chat",
-          onPress: () => {
-            Alert.alert("Live Chat", "Chat feature coming soon!");
-          }
-        }
-      ]
-    );
+  const openSupportChat = () => {
+    // Navigate to support chat in Profile tab
+    navigation.navigate("Profile" as never, {
+      screen: "SupportChat",
+    } as never);
   };
 
   return (
@@ -56,11 +39,8 @@ export default function OrdersStackNavigator() {
         options={{
           title: "Orders",
           headerRight: () => (
-            <Pressable
-              onPress={contactSupport}
-              style={{ padding: 8 }}
-            >
-              <Feather name="headphones" size={24} color={theme.primary} />
+            <Pressable onPress={openSupportChat} style={{ padding: 8 }}>
+              <Feather name="message-circle" size={24} color={theme.primary} />
             </Pressable>
           ),
         }}
@@ -71,10 +51,7 @@ export default function OrdersStackNavigator() {
         options={{
           title: "Dispute Chat",
           headerRight: () => (
-            <Pressable
-              onPress={contactSupport}
-              style={{ padding: 8 }}
-            >
+            <Pressable onPress={openSupportChat} style={{ padding: 8 }}>
               <Feather name="headphones" size={24} color={theme.primary} />
             </Pressable>
           ),
@@ -84,12 +61,9 @@ export default function OrdersStackNavigator() {
         name="OrderDetailScreen"
         component={OrderDetailScreen}
         options={{
-          title: "Orders Detail",
+          title: "Order Details",
           headerRight: () => (
-            <Pressable
-              onPress={contactSupport}
-              style={{ padding: 8 }}
-            >
+            <Pressable onPress={openSupportChat} style={{ padding: 8 }}>
               <Feather name="headphones" size={24} color={theme.primary} />
             </Pressable>
           ),

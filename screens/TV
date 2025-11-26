@@ -1,0 +1,329 @@
+// screens/TVScreen.tsx
+{/*import React, { useState } from "react";
+import {
+  View,
+  TextInput,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+} from "react-native";
+import { ThemedText } from "@/components/ThemedText";
+import { useTheme } from "@/hooks/useTheme";
+import { Feather } from "@expo/vector-icons";
+import {
+  getTVBouquets,
+  verifySmartCard,
+  buyTVSubscription,
+} from "@/lib/vtpass"; // Make sure this path matches your file location
+
+const providers = [
+  { id: "dstv", name: "DSTV", color: "#E50914" },
+  { id: "gotv", name: "GOTV", color: "#00A859" },
+  { id: "startimes", name: "STARTIMES", color: "#FF6B00" },
+] as const;
+
+export default function TVScreen() {
+  const theme = useTheme();
+
+  const [serviceID, setServiceID] = useState<string>("dstv");
+  const [smartCard, setSmartCard] = useState<string>("");
+  const [plans, setPlans] = useState<any[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [customerName, setCustomerName] = useState<string>("");
+
+  // Load Bouquets
+  const loadPlans = async () => {
+    if (plans.length > 0 && serviceID === serviceID) return;
+
+    try {
+      setLoadingPlans(true);
+      const bouquets = await getTVBouquets(serviceID);
+      setPlans(bouquets);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to load bouquets");
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  // Verify Smartcard
+  const handleVerify = async () => {
+    if (!smartCard.trim()) {
+      return Alert.alert("Invalid Input", "Enter Smartcard/IUC number");
+    }
+
+    try {
+      setVerifying(true);
+      const result = await verifySmartCard(serviceID, smartCard.trim());
+      const name = result.Customer_Name || result.customer_name || "Verified User";
+      setCustomerName(name);
+      Alert.alert("Verified", `Customer: ${name}`);
+    } catch (err: any) {
+      setCustomerName("");
+      Alert.alert("Verification Failed", err.message || "Invalid Smartcard");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // Purchase Subscription
+  const handlePurchase = async () => {
+    if (!selectedPlan) return Alert.alert("Error", "Select a bouquet");
+    if (!customerName) return Alert.alert("Verify First", "Please verify Smartcard");
+
+    const confirm = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        "Confirm Payment",
+        `${selectedPlan.name}\n₦${Number(selectedPlan.variation_amount).toLocaleString()}\nSmartcard: ${smartCard}`,
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Pay Now", onPress: () => resolve(true) },
+        ]
+      );
+    });
+
+    if (!confirm) return;
+
+    try {
+      setBuying(true);
+      const res = await buyTVSubscription({
+        serviceID,
+        billersCode: smartCard.trim(),
+        variation_code: selectedPlan.variation_code,
+        amount: Number(selectedPlan.variation_amount),
+        phone: "08000000000",
+      });
+
+      if (res.code === "000") {
+        Alert.alert("Success!", "Subscription purchased successfully!");
+        setSelectedPlan(null);
+        setSmartCard("");
+        setCustomerName("");
+        setPlans([]);
+      } else if (res.code === "021") {
+        Alert.alert("Pending", "Processing... Check status later");
+      } else {
+        Alert.alert("Failed", res.response_description || "Transaction failed");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Purchase failed. Try again.");
+    } finally {
+      setBuying(false);
+    }
+  };
+
+  return (
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: 40 }}
+    >
+      <ThemedText type="h1" style={styles.title}>
+        TV Subscription
+      </ThemedText>
+
+      {/* Provider Selection 
+      <ThemedText type="h3" style={styles.label}>Select Provider</ThemedText>
+      <View style={styles.providerRow}>
+        {providers.map((p) => (
+          <Pressable
+            key={p.id}
+            onPress={() => {
+              setServiceID(p.id);
+              setPlans([]);
+              setSelectedPlan(null);
+              setCustomerName("");
+            }}
+            style={[
+              styles.providerBtn,
+              serviceID === p.id && { backgroundColor: p.color },
+            ]}
+          >
+            <ThemedText
+              style={{
+                color: serviceID === p.id ? "#fff" : theme.text,
+                fontWeight: "bold",
+              }}
+            >
+              {p.name}
+            </ThemedText>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Smartcard Input 
+      <ThemedText type="h3" style={styles.label}>Smartcard / IUC Number</ThemedText>
+      <TextInput
+        value={smartCard}
+        onChangeText={setSmartCard}
+        placeholder="e.g. 1234567890"
+        keyboardType="numeric"
+        style={[styles.input, { borderColor: theme.border, color: theme.text }]}
+      />
+
+      {/* Verify Button 
+      <Pressable
+        style={[styles.verifyBtn, verifying && styles.disabledBtn]}
+        onPress={handleVerify}
+        disabled={verifying}
+      >
+        {verifying ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <>
+            <Feather name="shield-check" size={22} color="#fff" />
+            <ThemedText style={styles.btnText}>Verify Smartcard</ThemedText>
+          </>
+        )}
+      </Pressable>
+
+      {/* Verified Customer 
+      {customerName ? (
+        <View style={styles.verifiedBox}>
+          <Feather name="check-circle" size={24} color="#10b981" />
+          <ThemedText style={{ marginLeft: 10, color: "#10b981", fontWeight: "600" }}>
+            Verified: {customerName}
+          </ThemedText>
+        </View>
+      ) : null}
+
+      {/* Load Bouquets 
+      <Pressable
+        style={[styles.loadBtn, loadingPlans && styles.disabledBtn]}
+        onPress={loadPlans}
+        disabled={loadingPlans}
+      >
+        {loadingPlans ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <ThemedText style={styles.btnText}>Load Bouquets</ThemedText>
+        )}
+      </Pressable>
+
+      {/* Bouquets List 
+      {plans.length > 0 && (
+        <>
+          <ThemedText type="h3" style={styles.label}>Select Bouquet</ThemedText>
+          {plans.map((plan) => (
+            <Pressable
+              key={plan.variation_code}
+              onPress={() => setSelectedPlan(plan)}
+              style={[
+                styles.planCard,
+                selectedPlan?.variation_code === plan.variation_code && {
+                  borderColor: theme.primary,
+                  borderWidth: 3,
+                  backgroundColor: theme.primary + "15",
+                },
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                <ThemedText type="h4">{plan.name}</ThemedText>
+                <ThemedText style={{ color: theme.textSecondary, marginTop: 4 }}>
+                  Valid for {plan.validity || "30 days"}
+                </ThemedText>
+              </View>
+              <ThemedText type="bold" style={{ color: theme.primary, fontSize: 18 }}>
+                ₦{Number(plan.variation_amount).toLocaleString()}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </>
+      )}
+
+      {/* Buy Button 
+      {selectedPlan && customerName && (
+        <Pressable
+          style={[styles.buyBtn, buying && styles.disabledBtn]}
+          onPress={handlePurchase}
+          disabled={buying}
+        >
+          {buying ? (
+            <ActivityIndicator size="large" color="#fff" />
+          ) : (
+            <ThemedText style={styles.buyText}>
+              Pay ₦{Number(selectedPlan.variation_amount).toLocaleString()}
+            </ThemedText>
+          )}
+        </Pressable>
+      )}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20 },
+  title: { marginBottom: 16 },
+  label: { marginTop: 24, marginBottom: 10, fontWeight: "600" },
+  providerRow: { flexDirection: "row", gap: 12, flexWrap: "wrap" },
+  providerBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#ddd",
+    minWidth: 100,
+    alignItems: "center",
+  },
+  input: {
+    borderWidth: 2,
+    padding: 16,
+    borderRadius: 16,
+    fontSize: 16,
+    backgroundColor: "#fafafa",
+  },
+  verifyBtn: {
+    backgroundColor: "#10b981",
+    padding: 16,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginTop: 16,
+  },
+  loadBtn: {
+    backgroundColor: "#6366f1",
+    padding: 16,
+    borderRadius: 16,
+    alignItems: "center",
+    marginTop: 24,
+  },
+  btnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  disabledBtn: { opacity: 0.7 },
+  verifiedBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ecfdf5",
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#10b981",
+  },
+  planCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 18,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+    marginBottom: 12,
+  },
+  buyBtn: {
+    backgroundColor: "#000",
+    padding: 20,
+    borderRadius: 20,
+    alignItems: "center",
+    marginTop: 32,
+  },
+  buyText: { color: "#fff", fontWeight: "bold", fontSize: 20 },
+});
+
+*/}
