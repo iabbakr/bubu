@@ -10,12 +10,20 @@ import { useTheme } from "@/hooks/useTheme";
 import OrderDetailScreen from "@/screens/OrderDetailScreen";
 import AdminDisputeScreen from "@/screens/AdminDisputeDashboard";
 import DisputeChatScreen from "@/screens/DisputeChatScreen";
+import { useAuth } from "@/hooks/useAuth";
+import SupportChatScreen from "@/screens/SupportChatScreen";
+import AdminSupportDashboard from "@/screens/AdminSupportDashboard";
+import AdminSupportChatScreen from "@/screens/AdminSupportChatScreen";
+
 
 export type OrdersStackParamList = {
   Orders: undefined;
   OrderDetailScreen: { orderId: string };
   DisputeChatScreen: { orderId: string };
   AdminDisputeScreen: { orderId: string };
+  SupportChat: undefined;
+  AdminSupportDashboard: undefined;
+  AdminSupportChat: { chatId: string };
 };
 
 const Stack = createNativeStackNavigator<OrdersStackParamList>();
@@ -23,13 +31,16 @@ const Stack = createNativeStackNavigator<OrdersStackParamList>();
 export default function OrdersStackNavigator() {
   const { theme, isDark } = useTheme();
   const navigation = useNavigation();
+  const {user} = useAuth();
 
   const openSupportChat = () => {
     // Navigate to support chat in Profile tab
-    navigation.navigate("Profile" as never, {
-      screen: "SupportChat",
-    } as never);
-  };
+    if (user.role === "admin") {
+                navigation.navigate("AdminSupportDashboard");
+                } else {
+                navigation.navigate("SupportChat");
+                }
+  }
 
   return (
     <Stack.Navigator screenOptions={getCommonScreenOptions({ theme, isDark })}>
@@ -57,6 +68,34 @@ export default function OrdersStackNavigator() {
           ),
         }}
       />
+      {/* Support Chat Screens */}
+                <Stack.Screen
+                  name="SupportChat"
+                  component={SupportChatScreen}
+                  options={{
+                    title: "Support Chat",
+                    headerBackTitle: "Back",
+                  }}
+                />
+               
+                <Stack.Screen
+                  name="AdminSupportDashboard"
+                  component={AdminSupportDashboard}
+                  options={{
+                    title: "Support Dashboard",
+                    headerBackTitle: "Back",
+                  }}
+                />
+                
+                <Stack.Screen
+                  name="AdminSupportChat"
+                  component={AdminSupportChatScreen}
+                  options={{
+                    title: "Support Chat",
+                    headerBackTitle: "Back",
+                  }}
+                />
+                
       <Stack.Screen
         name="OrderDetailScreen"
         component={OrderDetailScreen}

@@ -289,6 +289,11 @@ export default function SupportChatScreen() {
 
   if (showStartChat) {
     return (
+      <KeyboardAvoidingView 
+        style={[styles.container, { backgroundColor: theme.background }]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={90}
+      >
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={styles.startChatContainer}>
           <Feather name="message-circle" size={64} color={theme.primary} />
@@ -361,11 +366,12 @@ export default function SupportChatScreen() {
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     );
   }
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: theme.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={90}
@@ -575,7 +581,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: Spacing.xxxl,
+    paddingVertical: Spacing["3xl"],
   },
   messageContainer: {
     marginBottom: Spacing.md,

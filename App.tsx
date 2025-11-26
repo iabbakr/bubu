@@ -1,18 +1,28 @@
 // App.tsx
-import React, { useEffect, useRef } from "react";
-import { StyleSheet } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
 import { NavigationContainer, NavigationContainerRef } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
-
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { CartProvider } from "@/hooks/useCart";
 import  {pushNotificationService}  from "@/services/pushNotificationService";
+import { LanguageProvider } from "./context/LanguageContext";
+// App.tsx or root
+
+
+// App.tsx ← Add these imports at the top
+
+
+import { StyleSheet, AppState, View, ActivityIndicator } from "react-native";     // ← AppState + View + ActivityIndicator
+import * as Localization from "expo-localization";                                 // ← Localization
+import AsyncStorage from "@react-native-async-storage/async-storage";               // ← AsyncStorage
+import i18n, { setAppLanguage, initI18n } from "./lib/i18n";                         // ← i18n (default export) + named exports
+
 
 // Configure how notifications should behave
 Notifications.setNotificationHandler({
@@ -69,6 +79,19 @@ function NavigationWithNotifications() {
 }
 
 export default function App() {
+  const [isI18nReady, setIsI18nReady] = useState(false);
+
+  useEffect(() => {
+    initI18n().then(() => setIsI18nReady(true));
+  }, []);
+
+  if (!isI18nReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
@@ -76,8 +99,10 @@ export default function App() {
           <KeyboardProvider>
             <AuthProvider>
               <CartProvider>
+                <LanguageProvider>
                 <NavigationWithNotifications />
                 <StatusBar style="auto" />
+                </LanguageProvider>
               </CartProvider>
             </AuthProvider>
           </KeyboardProvider>

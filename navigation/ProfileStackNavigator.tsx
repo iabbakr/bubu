@@ -25,6 +25,9 @@ import { Product } from "../services/firebaseService";
 import AdminDisputesScreen from "@/screens/AdminDisputeDashboard";
 import { useNavigation } from "@react-navigation/native";
 import { Pressable } from "react-native";
+import HelpCenterScreen from "@/screens/HelpCenterScreen";
+import LanguageScreen from "@/screens/LanguageScreen";
+import i18n from "@/lib/i18n";
 
 export type ProfileStackParamList = {
   Profile: undefined;
@@ -43,6 +46,9 @@ export type ProfileStackParamList = {
   SupportChat: undefined;
   AdminSupportDashboard: undefined;
   AdminSupportChat: { chatId: string };
+  HelpCenter: undefined;
+  Language: undefined;
+
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -59,18 +65,24 @@ export default function ProfileStackNavigator() {
           <Stack.Screen
             name="Profile"
             component={ProfileScreen}
-            options={{
-              title: "Profile",
-              headerRight: () => (
-                <Pressable
-                  onPress={() => navigation.navigate("SupportChat" as never)}
-                  style={{ padding: 8 }}
-                >
-                  <Feather name="message-circle" size={24} color={theme.primary} />
-                </Pressable>
-              ),
+            options={({ navigation }) => ({
+            title: i18n.t("profile"),
+            headerRight: () => (
+              <Pressable
+                onPress={() => {
+                if (user.role === "admin") {
+                navigation.navigate("AdminSupportDashboard");
+                } else {
+                navigation.navigate("SupportChat");
+                }
             }}
-          />
+          >
+        <Feather name="headphones" size={24} color={theme.primary} />
+      </Pressable>
+    ),
+  })}
+/>
+
           <Stack.Screen
             name="AccountInfo"
             component={AccountInfoScreen}
@@ -139,6 +151,15 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
+          <Stack.Screen
+            name="HelpCenter"
+            component={HelpCenterScreen}
+            options={{
+              title: "Help Center",
+              headerBackTitle: "Back",
+            }}
+          />
           
           <Stack.Screen
             name="AddProduct"
@@ -179,6 +200,14 @@ export default function ProfileStackNavigator() {
             component={MyProductsScreen}
             options={{
               title: "My Products",
+              headerBackTitle: "Back",
+            }}
+          />
+          <Stack.Screen
+            name="Language"
+            component={LanguageScreen}
+            options={{
+              title: "Languages",
               headerBackTitle: "Back",
             }}
           />

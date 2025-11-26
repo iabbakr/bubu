@@ -6,10 +6,11 @@ import { useTheme } from "../hooks/useTheme";
 import { useAuth } from "../hooks/useAuth";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { settingsService } from "../services/settingsService";
+import i18n from "@/lib/i18n";
 
 const themes = [
-  { code: "light", label: "Light Mode" },
-  { code: "dark", label: "Dark Mode" },
+  { code: "light", label: i18n.t("light_mode") },
+  { code: "dark", label: i18n.t("dark_mode") },
 ];
 
 export default function ThemeSettingsScreen() {

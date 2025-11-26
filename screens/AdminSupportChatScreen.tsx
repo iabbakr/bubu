@@ -125,17 +125,20 @@ export default function AdminSupportChatScreen() {
         { text: "Cancel", style: "cancel" },
         {
           text: "Resolve",
-          onPress: async (notes) => {
+          onPress: (notes?: string) => {
+          (async () => {
             try {
-              await supportChatService.resolveChat(chat.id, notes);
+              await supportChatService.resolveChat(chat.id, notes || "");
               Alert.alert("Success", "Chat resolved successfully", [
                 { text: "OK", onPress: () => navigation.goBack() },
               ]);
             } catch (error) {
               Alert.alert("Error", "Failed to resolve chat");
             }
+          })();
           },
-        },
+        }
+
       ],
       "plain-text"
     );

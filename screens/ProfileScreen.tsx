@@ -9,8 +9,12 @@ import { firebaseService, Wallet } from "../services/firebaseService";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
+import { useLanguage } from "../context/LanguageContext";
+import i18n from "../lib/i18n"; // ← ADD THIS LINE
+import {T} from "../components/T"
 
 export default function ProfileScreen() {
+  const { locale } = useLanguage();
   const { theme } = useTheme();
   const { user, signOut } = useAuth();
   const navigation = useNavigation();
@@ -117,7 +121,7 @@ export default function ProfileScreen() {
               <Feather name="credit-card" size={24} color="#fff" />
               <View style={{ marginLeft: Spacing.md }}>
                 <ThemedText type="caption" lightColor="#fff" darkColor="#fff" style={{ opacity: 0.9 }}>
-                  Wallet Balance
+                  {i18n.t("wallet_balance")}
                 </ThemedText>
                 <ThemedText type="h2" lightColor="#fff" darkColor="#fff" style={{ marginTop: 4 }}>
                   ₦{wallet.balance.toFixed(2)}
@@ -140,28 +144,28 @@ export default function ProfileScreen() {
           </ThemedText>
           {renderMenuItem(
             "user", 
-            "Account Information", 
+            i18n.t("account_information"),
             () => navigation.navigate("AccountInfo" as never)
           )}
-          {renderMenuItem("shopping-cart", "Cart", () => navigation.navigate("Cart" as never))}
-          {renderMenuItem("shopping-bag", "My Orders", () => {})}
-          {renderMenuItem("heart", "Wishlist", () => {})}
+          {renderMenuItem("shopping-cart", i18n.t("cart"), () => navigation.navigate("Cart" as never))}
+          {renderMenuItem("shopping-bag", i18n.t("order"), () => {})}
+          {renderMenuItem("heart", i18n.t("wishlist"), () => {})}
         </View>
 
         {/* Business Section (for Sellers/Admins) */}
         {(user.role === "seller" || user.role === "admin") && (
           <View style={styles.menuSection}>
             <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
-              Business
+              {i18n.t("business")}
             </ThemedText>
             {user.role === "seller" && renderMenuItem(
               "briefcase", 
-              "Seller Dashboard", 
+              i18n.t("seller_dashboard"), 
               () => navigation.navigate("SellerDashboard" as never)
             )}
             {user.role === "admin" && renderMenuItem(
               "shield", 
-              "Admin Panel", 
+              i18n.t("admin_panel"), 
               () => navigation.navigate("AdminPanel" as never)
             )}
           </View>
@@ -170,28 +174,29 @@ export default function ProfileScreen() {
         {/* Settings Section */}
         <View style={styles.menuSection}>
           <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
-            Settings
+            {i18n.t("settings")}
           </ThemedText>
-          {renderMenuItem("bell", "Notifications", () => navigation.navigate("NotificationSetting" as never))}
-          {renderMenuItem("lock", "Privacy & Security", () => {})}
-          {renderMenuItem("globe", "Language", () => {})}
-          {renderMenuItem("moon", "Theme", () => navigation.navigate("Theme" as never))}
+          
+          
+          {renderMenuItem("bell", i18n.t("notifications"), () => navigation.navigate("NotificationSetting" as never))}
+          {renderMenuItem("lock", i18n.t("privacy_security"), () => {})}
+          {renderMenuItem("globe", i18n.t("language"), () => navigation.navigate("Language" as never))}
+          {renderMenuItem("moon", i18n.t("theme"), () => navigation.navigate("Theme" as never))}
         </View>
 
         {/* Support Section */}
         <View style={styles.menuSection}>
           <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
-            Support
+            {i18n.t("support")}
           </ThemedText>
-          {renderMenuItem("help-circle", "Help Center", () => {})}
-          {renderMenuItem("message-circle", "Contact Support", () => {})}
-          {renderMenuItem("star", "Rate Us", () => {})}
-          {renderMenuItem("info", "About", () => {})}
+          {renderMenuItem("help-circle", i18n.t("help_center"), () => navigation.navigate("HelpCenter" as never))}
+          {renderMenuItem("star", i18n.t("rate_us"), () => {})}
+          {renderMenuItem("info", i18n.t("about"), () => {})}
         </View>
 
         {/* Sign Out Button */}
         <PrimaryButton 
-          title="Sign Out" 
+          title={i18n.t("sign_out")} 
           onPress={handleSignOut}
           variant="outlined"
           style={{ marginTop: Spacing.lg }}

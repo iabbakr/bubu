@@ -7,6 +7,7 @@ import SupermarketStackNavigator from "@/navigation/SupermarketStackNavigator";
 import PharmacyStackNavigator from "@/navigation/PharmacyStackNavigator";
 import ServicesStackNavigator from "@/navigation/ServicesStackNavigator";
 import OrdersStackNavigator from "@/navigation/OrdersStackNavigator";
+import i18n from "../lib/i18n"; 
 
 
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
@@ -60,7 +61,7 @@ export default function MainTabNavigator() {
         name="SupermarketTab"
         component={SupermarketStackNavigator}
         options={{
-          title: "Supermarket",
+          title: i18n.t("supermarket"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="shopping-cart" size={20} color={color} />
           ),
@@ -70,7 +71,7 @@ export default function MainTabNavigator() {
         name="PharmacyTab"
         component={PharmacyStackNavigator}
         options={{
-          title: "Pharmacy",
+          title: i18n.t("pharmacy"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="heart" size={20} color={color} />
           ),
@@ -80,7 +81,7 @@ export default function MainTabNavigator() {
         name="ServicesTab"
         component={ServicesStackNavigator}
         options={{
-          title: "Services",
+          title: i18n.t("services"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="zap" size={20} color={color} />
           ),
@@ -90,7 +91,7 @@ export default function MainTabNavigator() {
         name="OrdersTab"
         component={OrdersStackNavigator}
         options={{
-          title: "Orders",
+          title: i18n.t("order"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="package" size={20} color={color} />
           ),
@@ -100,7 +101,7 @@ export default function MainTabNavigator() {
         name="ProfileTab"
         component={ProfileStackNavigator}
         options={{
-          title: "Profile",
+          title: i18n.t("profile"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="user" size={20} color={color} />
           ),
