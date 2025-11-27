@@ -75,13 +75,13 @@ export default function HelpCenterScreen() {
     {
       icon: "phone",
       title: "Call Support",
-      subtitle: "+234 901 234 5678",
+      subtitle: "+234 814 000 2708",
       onPress: () => Linking.openURL("tel:+2349012345678"),
     },
     {
       icon: "mail",
       title: "Email Us",
-      subtitle: "support@bubu.africa",
+      subtitle: "support@bubu.ng",
       onPress: () => Linking.openURL("mailto:support@bubu.africa"),
     },
     {

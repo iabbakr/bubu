@@ -8,11 +8,11 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { Location } from "../types/location";
+import { soundManager } from "@/lib/soundManager";
 
 export type UserRole = "admin" | "seller" | "buyer";
 
-
-
+// This matches exactly what is saved in Firestore (from firebaseService)
 export interface UserData {
   uid: string;
   email: string;
@@ -20,12 +20,18 @@ export interface UserData {
   name: string;
   phone?: string;
   gender?: "male" | "female" | "other";
-  referralCode?: string; // code used to sign up
-  myReferralCode?: string; // user's unique code
-  location?: Location; // added
+  referralCode?: string;
+  myReferralCode?: string;
+  referredBy?: string;
+  hasCompletedFirstPurchase?: boolean;
+  hasCompletedBusinessProfile?: boolean;
+  location?: Location;
   createdAt: number;
+  businessName?: string;        // ← Now optional
+  businessAddress?: string;     // ← optional
+  businessPhone?: string;       // ← optional
   sellerCategory?: "supermarket" | "pharmacy";
-  referralBonus?: number; // total bonus earned
+  referralBonus?: number;
 }
 
 // Utility to generate a unique referral code
@@ -50,7 +56,7 @@ interface AuthContextType {
     phone?: string,
     gender?: "male" | "female" | "other",
     referralCode?: string,
-    location?: Location, // added
+    location?: Location,
     sellerCategory?: "supermarket" | "pharmacy"
   ) => Promise<boolean>;
   signOut: () => Promise<void>;
@@ -89,51 +95,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // ------------------- SIGN UP -------------------
   const signUp = async (
     email: string,
-  password: string,
-  role: UserRole,
-  name: string,
-  phone?: string,
-  gender?: "male" | "female" | "other",
-  referralCode?: string,
-  location?: Location,
-  sellerCategory?: "supermarket" | "pharmacy" // new
+    password: string,
+    role: UserRole,
+    name: string,
+    phone?: string,
+    gender?: "male" | "female" | "other",
+    referralCode?: string,
+    location?: Location,
+    sellerCategory?: "supermarket" | "pharmacy"
   ): Promise<boolean> => {
     try {
       const res = await createUserWithEmailAndPassword(auth, email, password);
       const uid = res.user.uid;
-
       const myReferralCode = generateReferralCode();
 
-      // Build user object
       const newUser: UserData = {
-  uid,
-  email,
-  role,
-  name,
-  myReferralCode,
-  referralBonus: 0,
-  createdAt: Date.now(),
-};
+        uid,
+        email,
+        role,
+        name,
+        myReferralCode,
+        referralBonus: 0,
+        hasCompletedFirstPurchase: false,
+        hasCompletedBusinessProfile: role === "seller" ? false : true, // buyers don't need it
+        createdAt: Date.now(),
+      };
 
-if (phone && phone.trim()) newUser.phone = phone.trim();
-if (gender) newUser.gender = gender;
-if (referralCode && referralCode.trim()) newUser.referralCode = referralCode.trim();
-if (location) newUser.location = location; // handle location
+      if (phone && phone.trim()) newUser.phone = phone.trim();
+      if (gender) newUser.gender = gender;
+      if (referralCode && referralCode.trim()) newUser.referralCode = referralCode.trim();
+      if (location) newUser.location = location;
+      if (sellerCategory && role === "seller") newUser.sellerCategory = sellerCategory;
 
-// ✅ Add sellerCategory if role is seller
-if (sellerCategory && role === "seller") newUser.sellerCategory = sellerCategory;
-
-// Save user
-await setDoc(doc(db, "users", uid), newUser);
-      // Create wallet
-      await setDoc(doc(db, "wallets", uid), {
-        userId: uid,
-        balance: 0,
-        pendingBalance: 0,
-        transactions: [],
-      });
-
-      // Handle referral bonus
+      // Referral handling
+      let referrerId: string | null = null;
       if (referralCode && referralCode.trim()) {
         const usersSnap = await getDocs(collection(db, "users"));
         const referrer = usersSnap.docs
@@ -141,6 +136,9 @@ await setDoc(doc(db, "users", uid), newUser);
           .find((u) => u.myReferralCode === referralCode.trim());
 
         if (referrer) {
+          referrerId = referrer.uid;
+          newUser.referredBy = referrerId;
+
           const refWalletSnap = await getDoc(doc(db, "wallets", referrer.uid));
           if (refWalletSnap.exists()) {
             const wallet = refWalletSnap.data();
@@ -150,23 +148,32 @@ await setDoc(doc(db, "users", uid), newUser);
               id: Date.now().toString(),
               type: "credit",
               amount,
-              description: `Referral bonus from ${name}`,
+              description: `Pending referral bonus from ${name} (Will be released after first purchase)`,
               timestamp: Date.now(),
+              status: "pending",
             });
 
             await updateDoc(doc(db, "wallets", referrer.uid), {
-              balance: (wallet.balance || 0) + amount,
+              pendingBalance: (wallet.pendingBalance || 0) + amount,
               transactions,
-            });
-
-            await updateDoc(doc(db, "users", referrer.uid), {
-              referralBonus: (referrer.referralBonus || 0) + amount,
             });
           }
         }
       }
 
+      // Save user to Firestore
+      await setDoc(doc(db, "users", uid), newUser);
+
+      // Create wallet
+      await setDoc(doc(db, "wallets", uid), {
+        userId: uid,
+        balance: 0,
+        pendingBalance: 0,
+        transactions: [],
+      });
+
       setUser(newUser);
+      await soundManager.play('signup');
       return true;
     } catch (err) {
       console.error("SignUp error:", err);
@@ -181,6 +188,7 @@ await setDoc(doc(db, "users", uid), newUser);
       const snap = await getDoc(doc(db, "users", res.user.uid));
       if (!snap.exists()) return false;
       setUser(snap.data() as UserData);
+      await soundManager.play('signin');
       return true;
     } catch (err) {
       console.log("SignIn error:", err);

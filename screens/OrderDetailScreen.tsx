@@ -4,13 +4,90 @@ import { Feather } from "@expo/vector-icons";
 import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { PrimaryButton } from "../components/PrimaryButton";
-import { firebaseService, Order } from "../services/firebaseService";
+import { firebaseService, Order, User } from "../services/firebaseService";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 
 type RouteParams = { orderId: string };
 type OrderTrackingStatus = "acknowledged" | "enroute" | "ready_for_pickup";
+
+// Seller Info Component
+function SellerInfo({ sellerId }: { sellerId: string }) {
+  const { theme } = useTheme();
+  const [seller, setSeller] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadSeller();
+  }, [sellerId]);
+
+  const loadSeller = async () => {
+    try {
+      const users = await firebaseService.getAllUsers();
+      const sellerData = users.find((u) => u.uid === sellerId);
+      setSeller(sellerData || null);
+    } catch (error) {
+      console.error("Error loading seller:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <ThemedText type="caption" style={{ color: theme.textSecondary }}>Loading seller info...</ThemedText>;
+  }
+
+  if (!seller) {
+    return <ThemedText type="caption" style={{ color: theme.textSecondary }}>Seller information unavailable</ThemedText>;
+  }
+
+  return (
+    <>
+      {seller.businessName && (
+        <View style={styles.infoRow}>
+          <Feather name="briefcase" size={18} color={theme.textSecondary} />
+          <View style={{ flex: 1, marginLeft: Spacing.md }}>
+            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+              Business Name
+            </ThemedText>
+            <ThemedText weight="medium" style={{ marginTop: 2 }}>
+              {seller.businessName}
+            </ThemedText>
+          </View>
+        </View>
+      )}
+
+      {seller.businessAddress && (
+        <View style={[styles.infoRow, { marginTop: Spacing.md }]}>
+          <Feather name="map-pin" size={18} color={theme.textSecondary} />
+          <View style={{ flex: 1, marginLeft: Spacing.md }}>
+            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+              Business Address
+            </ThemedText>
+            <ThemedText weight="medium" style={{ marginTop: 2 }}>
+              {seller.businessAddress}
+            </ThemedText>
+          </View>
+        </View>
+      )}
+
+      {seller.businessPhone && (
+        <View style={[styles.infoRow, { marginTop: Spacing.md }]}>
+          <Feather name="phone" size={18} color={theme.textSecondary} />
+          <View style={{ flex: 1, marginLeft: Spacing.md }}>
+            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+              Business Phone
+            </ThemedText>
+            <ThemedText weight="medium" style={{ marginTop: 2 }}>
+              {seller.businessPhone}
+            </ThemedText>
+          </View>
+        </View>
+      )}
+    </>
+  );
+}
 
 export default function OrderDetailScreen() {
   const { theme } = useTheme();
@@ -85,12 +162,16 @@ export default function OrderDetailScreen() {
     }
 
     try {
-      if (user.role === "seller") {
-        await firebaseService.cancelOrderBySeller(order.id, user.uid, cancelReason);
-      } else {
+      const isBuyer = user.uid === order.buyerId;
+      
+      if (isBuyer) {
         await firebaseService.cancelOrderByBuyer(order.id, user.uid, cancelReason);
+        Alert.alert("Success", "Order cancelled successfully. You have been refunded.");
+      } else {
+        await firebaseService.cancelOrderBySeller(order.id, user.uid, cancelReason);
+        Alert.alert("Success", "Order cancelled successfully. Buyer has been refunded.");
       }
-      Alert.alert("Success", "Order cancelled successfully");
+      
       setShowCancelModal(false);
       setCancelReason("");
       loadOrder();
@@ -133,6 +214,12 @@ export default function OrderDetailScreen() {
       completed: index <= currentIndex || order?.status === "delivered",
       active: step.key === currentStatus,
     }));
+  };
+
+  const getCancelModalTitle = () => {
+    if (!order || !user) return "Cancel Order";
+    const isBuyer = user.uid === order.buyerId;
+    return isBuyer ? "Cancel Order" : "Cancel Order";
   };
 
   if (loading) {
@@ -285,6 +372,14 @@ export default function OrderDetailScreen() {
           ))}
         </View>
 
+        {/* Seller Business Info - NEW SECTION */}
+        <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+          <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
+            Seller Information
+          </ThemedText>
+          <SellerInfo sellerId={order.sellerId} />
+        </View>
+
         {/* Delivery Info */}
         <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
@@ -367,6 +462,18 @@ export default function OrderDetailScreen() {
               <PrimaryButton title="Confirm Delivery ✓" onPress={handleConfirmDelivery} />
             )}
 
+          {/* Buyer Cancel Order - Only before acknowledgment */}
+          {isBuyer &&
+            order.status === "running" &&
+            !order.trackingStatus && (
+              <PrimaryButton
+                title="Cancel Order"
+                onPress={() => setShowCancelModal(true)}
+                variant="outlined"
+                style={{ marginTop: Spacing.sm }}
+              />
+            )}
+
           {/* Buyer/Seller Open Dispute */}
           {(isBuyer || isSeller) &&
             order.status === "running" &&
@@ -409,7 +516,7 @@ export default function OrderDetailScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
             <View style={styles.modalHeader}>
-              <ThemedText type="h3">Cancel Order</ThemedText>
+              <ThemedText type="h3">{getCancelModalTitle()}</ThemedText>
               <Pressable onPress={() => setShowCancelModal(false)}>
                 <Feather name="x" size={24} color={theme.text} />
               </Pressable>

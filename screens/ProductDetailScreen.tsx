@@ -1,4 +1,4 @@
-// screens/ProductDetailScreen.tsx - FIXED
+// screens/ProductDetailScreen.tsx
 
 import { View, StyleSheet, Image, Pressable, Alert, ScrollView } from "react-native";
 import { useState, useEffect, useRef } from "react";
@@ -46,24 +46,21 @@ export default function ProductDetailScreen() {
     }
   };
 
-  // ✅ FIXED: Normalize imageUrls to always be an array
-// ✅ FIXED: Normalize imageUrls to always be an array
-const getImageUrls = (product: Product | null): string[] => {
-  if (!product) return [];
+  const getImageUrls = (product: Product | null): string[] => {
+    if (!product) return [];
 
-  const imageUrls = product.imageUrls as string | string[] | undefined;
+    const imageUrls = product.imageUrls as string | string[] | undefined;
 
-  if (Array.isArray(imageUrls)) {
-    return imageUrls.filter(url => url && url.trim() !== '');
-  }
+    if (Array.isArray(imageUrls)) {
+      return imageUrls.filter(url => url && url.trim() !== '');
+    }
 
-  if (typeof imageUrls === 'string' && imageUrls.trim() !== '') {
-    return [imageUrls];
-  }
+    if (typeof imageUrls === 'string' && imageUrls.trim() !== '') {
+      return [imageUrls];
+    }
 
-  return [];
-};
-
+    return [];
+  };
 
   if (loading) {
     return (
@@ -126,6 +123,20 @@ const getImageUrls = (product: Product | null): string[] => {
       { text: "Go to Cart", onPress: () => navigation.navigate("Cart") },
     ]);
   };
+  // Add this section after the Title section in ProductDetailScreen
+
+{/* Business Name - NEW */}
+{product.sellerBusinessName && (
+  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm }}>
+    <Feather name="briefcase" size={14} color={theme.primary} />
+    <ThemedText
+      type="body"
+      style={{ marginLeft: 6, color: theme.primary, fontSize: 14, fontWeight: "600" }}
+    >
+      Sold by: {product.sellerBusinessName}
+    </ThemedText>
+  </View>
+)}
 
   const handleScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -140,7 +151,7 @@ const getImageUrls = (product: Product | null): string[] => {
   return (
     <ScreenScrollView>
       <View style={styles.container}>
-        {/* Image Gallery - FIXED */}
+        {/* Image Gallery */}
         <View style={styles.imageGalleryContainer}>
           <ScrollView
             ref={scrollViewRef}
@@ -163,7 +174,6 @@ const getImageUrls = (product: Product | null): string[] => {
                 />
               ))
             ) : (
-              // Fallback placeholder if no images
               <View style={[styles.image, styles.placeholderImage]}>
                 <Feather name="image" size={60} color="#ccc" />
                 <ThemedText type="caption" style={{ marginTop: 12, color: "#999" }}>
@@ -173,7 +183,6 @@ const getImageUrls = (product: Product | null): string[] => {
             )}
           </ScrollView>
 
-          {/* Image Indicators - only show if multiple images */}
           {imageUrls.length > 1 && (
             <View style={styles.indicatorContainer}>
               {imageUrls.map((_, index) => (
@@ -191,14 +200,12 @@ const getImageUrls = (product: Product | null): string[] => {
             </View>
           )}
 
-          {/* Discount Badge */}
           {product.discount ? (
             <View style={[styles.discountBadge, { backgroundColor: theme.error }]}>
               <ThemedText style={styles.badgeText}>SAVE {product.discount}%</ThemedText>
             </View>
           ) : null}
 
-          {/* Out of Stock Overlay */}
           {product.stock === 0 && (
             <View style={styles.outOfStockOverlay}>
               <ThemedText style={styles.outOfStockText}>Out of Stock</ThemedText>
@@ -217,6 +224,21 @@ const getImageUrls = (product: Product | null): string[] => {
             <ThemedText type="body" style={{ color: theme.primary, marginBottom: Spacing.sm }}>
               {product.brand} {product.weight ? `• ${product.weight}` : ""}
             </ThemedText>
+          )}
+
+          {/* Location Row */}
+          {product.location?.city && (
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm }}>
+              <Feather name="map-pin" size={14} color={theme.textSecondary} />
+              <ThemedText
+                type="body"
+                style={{ marginLeft: 6, color: theme.textSecondary, fontSize: 13 }}
+                numberOfLines={1}
+              >
+                {product.location.city}
+                {product.location.area ? `, ${product.location.area}` : ""}
+              </ThemedText>
+            </View>
           )}
 
           {/* Price Row */}
@@ -260,6 +282,17 @@ const getImageUrls = (product: Product | null): string[] => {
                 <Feather name="file-text" size={14} color="#007AFF" />
                 <ThemedText type="caption" style={{ marginLeft: 4, color: "#007AFF" }}>
                   Prescription Required
+                </ThemedText>
+              </View>
+            )}
+
+            {/* Location Chip */}
+            {product.location?.city && (
+              <View style={[styles.chip, { backgroundColor: theme.backgroundSecondary }]}>
+                <Feather name="map-pin" size={14} color={theme.primary} />
+                <ThemedText type="caption" style={{ marginLeft: 4 }}>
+                  {product.location.city}
+                  {product.location.area ? `, ${product.location.area}` : ""}
                 </ThemedText>
               </View>
             )}
@@ -349,7 +382,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   imageGalleryContainer: { position: "relative" },
   imageGallery: { height: 340 },
-  image: { width: 390, height: 340, backgroundColor: "#f0f0f0" }, // Fixed width for proper scrolling
+  image: { width: 390, height: 340, backgroundColor: "#f0f0f0" },
   placeholderImage: { justifyContent: "center", alignItems: "center" },
   indicatorContainer: {
     position: "absolute",
@@ -395,18 +428,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: Spacing.sm,
-  },
+  infoRow: { flexDirection: "row", alignItems: "center", marginVertical: Spacing.sm },
   sectionTitle: { marginTop: Spacing.xl, marginBottom: Spacing.md },
   quantitySection: { marginVertical: Spacing.xl },
-  quantityControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: Spacing.md,
-  },
+  quantityControls: { flexDirection: "row", alignItems: "center", marginTop: Spacing.md },
   qtyBtn: {
     width: 48,
     height: 48,

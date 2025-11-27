@@ -92,15 +92,29 @@ export default function OrdersScreen() {
     setShowCancelModal(true);
   };
 
-  const confirmSellerCancel = async () => {
+  const handleBuyerCancel = (order: Order) => {
+    setSelectedOrder(order);
+    setShowCancelModal(true);
+  };
+
+  const confirmCancel = async () => {
     if (!selectedOrder || !user) return;
     if (!cancelReason.trim()) {
       Alert.alert("Error", "Please provide a reason for cancellation");
       return;
     }
+    
     try {
-      await firebaseService.cancelOrderBySeller(selectedOrder.id, user.uid, cancelReason);
-      Alert.alert("Success", "Order cancelled. Buyer has been refunded.");
+      const isBuyer = user.uid === selectedOrder.buyerId;
+      
+      if (isBuyer) {
+        await firebaseService.cancelOrderByBuyer(selectedOrder.id, user.uid, cancelReason);
+        Alert.alert("Success", "Order cancelled. You have been refunded.");
+      } else {
+        await firebaseService.cancelOrderBySeller(selectedOrder.id, user.uid, cancelReason);
+        Alert.alert("Success", "Order cancelled. Buyer has been refunded.");
+      }
+      
       setShowCancelModal(false);
       setCancelReason("");
       setSelectedOrder(null);
@@ -194,6 +208,12 @@ export default function OrdersScreen() {
     }
   };
 
+  const getCancelModalTitle = () => {
+    if (!selectedOrder || !user) return "Cancel Order";
+    const isBuyer = user.uid === selectedOrder.buyerId;
+    return isBuyer ? "Cancel Order" : "Cancel Order";
+  };
+
   const renderTab = (status: OrderStatus, label: string) => {
     const isSelected = selectedStatus === status;
     return (
@@ -233,10 +253,21 @@ export default function OrdersScreen() {
               style={styles.actionButton}
             />
           )}
+          
           {isSeller && (
             <PrimaryButton
               title="Cancel Order"
               onPress={() => handleSellerCancel(order)}
+              variant="outlined"
+              style={styles.actionButton}
+            />
+          )}
+
+          {/* Buyer Cancel Button - Only show before acknowledgment */}
+          {isBuyer && !order.trackingStatus && (
+            <PrimaryButton
+              title="Cancel Order"
+              onPress={() => handleBuyerCancel(order)}
               variant="outlined"
               style={styles.actionButton}
             />
@@ -377,7 +408,7 @@ export default function OrdersScreen() {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
               <View style={styles.modalHeader}>
-                <ThemedText type="h3">Cancel Order</ThemedText>
+                <ThemedText type="h3">{getCancelModalTitle()}</ThemedText>
                 <Pressable onPress={() => setShowCancelModal(false)}>
                   <Feather name="x" size={24} color={theme.text} />
                 </Pressable>
@@ -397,7 +428,7 @@ export default function OrdersScreen() {
                 numberOfLines={4}
               />
 
-              <PrimaryButton title="Confirm Cancellation" onPress={confirmSellerCancel} style={{ marginTop: Spacing.md }} />
+              <PrimaryButton title="Confirm Cancellation" onPress={confirmCancel} style={{ marginTop: Spacing.md }} />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -461,7 +492,7 @@ export default function OrdersScreen() {
 
               <Pressable
                 style={[
-                  styles.actionButton,
+                  styles.adminActionButton,
                   { backgroundColor: adminDecision === "refund" ? theme.warning : theme.backgroundSecondary }
                 ]}
                 onPress={() => setAdminDecision("refund")}
@@ -471,7 +502,7 @@ export default function OrdersScreen() {
 
               <Pressable
                 style={[
-                  styles.actionButton,
+                  styles.adminActionButton,
                   { backgroundColor: adminDecision === "release" ? theme.success : theme.backgroundSecondary, marginTop: Spacing.sm }
                 ]}
                 onPress={() => setAdminDecision("release")}
@@ -509,5 +540,6 @@ const styles = StyleSheet.create({
   modalContent: { borderTopLeftRadius: BorderRadius.lg, borderTopRightRadius: BorderRadius.lg, padding: Spacing.xl, maxHeight: "80%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: Spacing.lg },
   textArea: { borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md, minHeight: 100, textAlignVertical: "top" },
+  adminActionButton: { padding: Spacing.md, borderRadius: BorderRadius.sm, alignItems: "center", justifyContent: "center" },
   supportButton: { position: "absolute", right: Spacing.lg, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5 },
 });

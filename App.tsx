@@ -1,4 +1,3 @@
-// App.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { NavigationContainer, NavigationContainerRef } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -6,29 +5,21 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
+
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { CartProvider } from "@/hooks/useCart";
-import  {pushNotificationService}  from "@/services/pushNotificationService";
+import { pushNotificationService } from "@/services/pushNotificationService";
 import { LanguageProvider } from "./context/LanguageContext";
-// App.tsx or root
+import { soundManager } from "./lib/soundManager";  // Correct path
+import { initI18n } from "./lib/i18n";
 
-
-// App.tsx ← Add these imports at the top
-
-
-import { StyleSheet, AppState, View, ActivityIndicator } from "react-native";     // ← AppState + View + ActivityIndicator
-import * as Localization from "expo-localization";                                 // ← Localization
-import AsyncStorage from "@react-native-async-storage/async-storage";               // ← AsyncStorage
-import i18n, { setAppLanguage, initI18n } from "./lib/i18n";                         // ← i18n (default export) + named exports
-
-
-// Configure how notifications should behave
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: true,
+    shouldPlaySound: false, // We use our own sounds
     shouldSetBadge: true,
   }),
 });
@@ -37,22 +28,18 @@ function NavigationWithNotifications() {
   const { user } = useAuth();
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
 
-  // Properly typed refs with undefined as initial value
   const notificationListener = useRef<Notifications.Subscription | null>(null);
-  const responseListener = useRef<Notifications.Subscription | null>(null);
+const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
     if (user) {
       pushNotificationService.registerForPushNotifications(user.uid);
     }
 
-    // Listen for notifications received while app is open
-    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
-      console.log("Notification received:", notification);
-      // Optional: show in-app toast/banner here later
+    notificationListener.current = Notifications.addNotificationReceivedListener(() => {
+      soundManager.play('signin'); // Optional: play sound when notification arrives
     });
 
-    // Listen when user taps a notification (even when app is closed)
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
       if (navigationRef.current) {
@@ -60,14 +47,9 @@ function NavigationWithNotifications() {
       }
     });
 
-    // Cleanup listeners on unmount
     return () => {
-      if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      }
-      if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
-      }
+      notificationListener.current && Notifications.removeNotificationSubscription(notificationListener.current);
+      responseListener.current && Notifications.removeNotificationSubscription(responseListener.current);
     };
   }, [user]);
 
@@ -85,13 +67,23 @@ export default function App() {
     initI18n().then(() => setIsI18nReady(true));
   }, []);
 
+  // Initialize and cleanup sounds
+  useEffect(() => {
+    soundManager.init();
+
+    return () => {
+      soundManager.unload();
+    };
+  }, []);
+
   if (!isI18nReady) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#0066CC" />
       </View>
     );
   }
+
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
@@ -100,8 +92,8 @@ export default function App() {
             <AuthProvider>
               <CartProvider>
                 <LanguageProvider>
-                <NavigationWithNotifications />
-                <StatusBar style="auto" />
+                  <NavigationWithNotifications />
+                  <StatusBar style="dark" />
                 </LanguageProvider>
               </CartProvider>
             </AuthProvider>
@@ -113,7 +105,8 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
+  root: { flex: 1 },
+  loading: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
 });
+
+

@@ -22,8 +22,9 @@ export default function PharmacyStackNavigator() {
         name="Pharmacy"
         component={PharmacyScreen}
         options={{
-          title: "Pharmacy",
+          headerShown: false
         }}
+        
       />
       <Stack.Screen
         name="ProductDetail"

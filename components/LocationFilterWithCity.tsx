@@ -1,18 +1,20 @@
 import React, { useState } from "react";
-import { View, StyleSheet, Modal, Pressable, ScrollView } from "react-native";
+import { View, StyleSheet, Modal, Pressable, ScrollView, ViewStyle  } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "./ThemedText";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { getAllStates, getCitiesByState, getAreasByCity } from "../types/location";
-
+ 
 interface Props {
   selectedState: string | null;
   selectedCity: string | null;
   selectedArea: string | null;
   onChange: (state: string | null, city: string | null, area: string | null) => void;
+  hideLabels?: boolean;
+  style?: ViewStyle; // 
 }
-
+ 
 export function LocationFilterWithCityAndArea({
   selectedState,
   selectedCity,
@@ -20,12 +22,12 @@ export function LocationFilterWithCityAndArea({
   onChange
 }: Props) {
   const { theme } = useTheme();
-
+ 
   const [step, setStep] = useState<"state" | "city" | "area" | null>(null);
   const [tempState, setTempState] = useState<string | null>(selectedState);
   const [tempCity, setTempCity] = useState<string | null>(selectedCity);
   const [tempArea, setTempArea] = useState<string | null>(selectedArea);
-
+ 
   const states = ["All States", ...getAllStates()];
   const cities = tempState && tempState !== "All States"
     ? getCitiesByState(tempState)
@@ -33,30 +35,36 @@ export function LocationFilterWithCityAndArea({
   const areas = tempState && tempCity && tempState !== "All States"
     ? ["All Areas", ...getAreasByCity(tempState, tempCity)]
     : [];
-
+ 
   const openSelector = () => {
     setTempState(selectedState);
     setTempCity(selectedCity);
     setTempArea(selectedArea);
     setStep("state");
   };
-
+ 
   const confirmSelection = () => {
     const finalState = tempState === "All States" ? null : tempState;
     const finalCity = finalState ? tempCity : null;
     const finalArea = finalCity && tempArea !== "All Areas" ? tempArea : null;
-
+ 
     onChange(finalState, finalCity, finalArea);
     setStep(null);
   };
+ 
+  // Fixed: Ensure displayText is always a string
+  const getDisplayText = (): string => {
+    if (selectedState && selectedCity && selectedArea) {
+      return `${selectedState}, ${selectedCity}, ${selectedArea}`;
+    } else if (selectedState && selectedCity) {
+      return `${selectedState}, ${selectedCity}`;
+    } else if (selectedState) {
+      return selectedState;
+    }
+    return "All Locations";
+  };
 
-  const display = selectedState
-    ? selectedCity
-      ? selectedArea
-        ? `${selectedState}, ${selectedCity}, ${selectedArea}`
-        : `${selectedState}, ${selectedCity}`
-      : selectedState
-    : "All Locations";
+  const displayText = getDisplayText();
 
   return (
     <>
@@ -72,11 +80,11 @@ export function LocationFilterWithCityAndArea({
       >
         <Feather name="map-pin" size={18} color={theme.primary} />
         <ThemedText style={{ marginLeft: Spacing.sm, flex: 1 }}>
-          {display}
+          {displayText}
         </ThemedText>
         <Feather name="chevron-down" size={18} color={theme.textSecondary} />
       </Pressable>
-
+ 
       {/* STATE MODAL */}
       <Modal visible={step === "state"} transparent animationType="slide">
         <View style={styles.overlay}>
@@ -87,14 +95,14 @@ export function LocationFilterWithCityAndArea({
                 <Feather name="x" size={24} color={theme.text} />
               </Pressable>
             </View>
-
+ 
             <ScrollView style={styles.list}>
               {states.map((state) => {
                 const isSelected =
                   state === "All States"
-                    ? !tempState
+                    ? !tempState || tempState === "All States"
                     : tempState === state;
-
+ 
                 return (
                   <Pressable
                     key={state}
@@ -137,7 +145,7 @@ export function LocationFilterWithCityAndArea({
           </View>
         </View>
       </Modal>
-
+ 
       {/* CITY MODAL */}
       <Modal visible={step === "city"} transparent animationType="slide">
         <View style={styles.overlay}>
@@ -151,7 +159,7 @@ export function LocationFilterWithCityAndArea({
                 <Feather name="x" size={24} color={theme.text} />
               </Pressable>
             </View>
-
+ 
             <ScrollView style={styles.list}>
               {cities.map((city) => {
                 const isSelected = tempCity === city;
@@ -191,7 +199,7 @@ export function LocationFilterWithCityAndArea({
           </View>
         </View>
       </Modal>
-
+ 
       {/* AREA MODAL */}
       <Modal visible={step === "area"} transparent animationType="slide">
         <View style={styles.overlay}>
@@ -205,7 +213,7 @@ export function LocationFilterWithCityAndArea({
                 <Feather name="x" size={24} color={theme.text} />
               </Pressable>
             </View>
-
+ 
             <ScrollView style={styles.list}>
               {areas.map((area) => {
                 const isSelected = tempArea === area || (area === "All Areas" && !tempArea);
@@ -238,7 +246,7 @@ export function LocationFilterWithCityAndArea({
                 );
               })}
             </ScrollView>
-
+ 
             <Pressable
               style={[styles.confirm, { backgroundColor: theme.primary }]}
               onPress={confirmSelection}
@@ -253,7 +261,7 @@ export function LocationFilterWithCityAndArea({
     </>
   );
 }
-
+ 
 const styles = StyleSheet.create({
   button: {
     flexDirection: "row",

@@ -20,6 +20,9 @@ import {
 } from "firebase/firestore";
 import { soundManager } from '../lib/soundManager';
 import { emailService } from "../lib/resend";
+
+
+
 export type UserRole = "admin" | "seller" | "buyer";
 
 export interface Location {
@@ -41,13 +44,11 @@ export interface User {
   hasCompletedFirstPurchase?: boolean; // NEW: track if user made first purchase
   location?: Location;
   sellerCategory?: "supermarket" | "pharmacy";
-  businessName?: string;
-  businessAddress?: string;
-  businessPhone?: string;
-  hasCompletedBusinessProfile?: boolean;
   createdAt: number;
   referralBonus?: number;
 }
+
+
 
 export interface Product {
   id: string;
@@ -58,14 +59,13 @@ export interface Product {
   subcategory?: string;
   imageUrls: string | string[];
   sellerId: string;
-  sellerBusinessName?: string;
   stock: number;
   discount?: number;
   location: Location
   brand?: string;
-  weight?: string;
-  expiryDate?: string;
-  isPrescriptionRequired?: boolean;
+  weight?: string; // e.g., "500g", "1L", "30 tablets"
+  expiryDate?: string; // ISO string: "2026-12-31"
+  isPrescriptionRequired?: boolean; // only for pharmacy
   isFeatured?: boolean;
   tags?: string[];
   createdAt: number;
@@ -95,14 +95,15 @@ export interface Order {
   adminNotes?: string;
   phoneNumber?: string;
   location?: Location,
-  trackingStatus?: "acknowledged" | "enroute" | "ready_for_pickup" | null;
-  trackingHistory?: TrackingEvent[];
+  trackingStatus?: "acknowledged" | "enroute" | "ready_for_pickup" | null; // NEW
+  trackingHistory?: TrackingEvent[]; // NEW
   createdAt: number;
   updatedAt: number;
-  resolvedByAdmin?: boolean;
-  adminResolution?: "delivered" | "cancelled";
+  resolvedByAdmin?: boolean;        // new
+  adminResolution?: "delivered" | "cancelled"; // new
 }
 
+// NEW: Tracking event interface
 export interface TrackingEvent {
   status: "acknowledged" | "enroute" | "ready_for_pickup" | "delivered";
   timestamp: number;
@@ -111,7 +112,7 @@ export interface TrackingEvent {
 
 export interface DisputeMessage {
   id: string;
-  senderId: string;
+  senderId: string;     // user or admin
   senderRole: "buyer" | "seller" | "admin";
   message: string;
   timestamp: number;
@@ -141,118 +142,63 @@ export interface Coupon {
   usedBy: string[];
 }
 
-const COMMISSION_RATE = 0.10;
-
-// Utility to generate a unique referral code
-const generateReferralCode = (length = 6) => {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
-  for (let i = 0; i < length; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-};
+const COMMISSION_RATE = 0.10; // 10% commission
 
 export const firebaseService = {
   // -----------------------------
   // AUTH
   // -----------------------------
   async signUp(
-    email: string,
-    password: string,
-    role: UserRole,
-    name: string,
-    phone?: string,
-    gender?: "male" | "female" | "other",
-    referralCode?: string,
-    location?: Location,
-    sellerCategory?: "supermarket" | "pharmacy"
-  ): Promise<User> {
-    const res = await createUserWithEmailAndPassword(auth, email, password);
-    const uid = res.user.uid;
+  email: string,
+  password: string,
+  role: UserRole,
+  name: string,
+  phone?: string,
+  gender?: "male" | "female" | "other",
+  referralCode?: string,
+  location?: Location,
+  sellerCategory?: "supermarket" | "pharmacy"
+): Promise<User> {   // ← This line was missing!
+  const res = await createUserWithEmailAndPassword(auth, email, password);
+  const uid = res.user.uid;
 
-    const myReferralCode = generateReferralCode();
+  const user: User = {
+    uid,
+    email,
+    role,
+    name,
+    createdAt: Date.now(),
+  };
 
-    const user: User = {
-      uid,
-      email,
-      role,
-      name,
-      myReferralCode,
-      referralBonus: 0,
-      hasCompletedFirstPurchase: false, // NEW: initialize as false
-      createdAt: Date.now(),
-    };
+  if (phone) user.phone = phone;
+  if (gender) user.gender = gender;
+  if (referralCode?.trim()) user.referralCode = referralCode.trim();
+  if (location) user.location = location;
 
-    if (phone) user.phone = phone;
-    if (gender) user.gender = gender;
-    if (referralCode?.trim()) user.referralCode = referralCode.trim();
-    if (location) user.location = location;
-    if (sellerCategory && role === "seller") user.sellerCategory = sellerCategory;
+  await setDoc(doc(db, "users", uid), user);
 
-    // Create wallet first
-    await setDoc(doc(db, "wallets", uid), {
-      userId: uid,
-      balance: 0,
-      pendingBalance: 0,
-      transactions: [],
-    });
+  await setDoc(doc(db, "wallets", uid), {
+    userId: uid,
+    balance: 0,
+    pendingBalance: 0,
+    transactions: [],
+  });
 
-    // Handle referral bonus - NEW: Goes to PENDING balance
-    let referrerId: string | null = null;
-    if (referralCode && referralCode.trim()) {
-      const usersSnap = await getDocs(collection(db, "users"));
-      const referrer = usersSnap.docs
-        .map((d) => d.data() as User)
-        .find((u) => u.myReferralCode === referralCode.trim());
-
-      if (referrer) {
-        referrerId = referrer.uid;
-        user.referredBy = referrerId; // NEW: store who referred this user
-
-        // Add to PENDING balance instead of main balance
-        const refWalletSnap = await getDoc(doc(db, "wallets", referrer.uid));
-        if (refWalletSnap.exists()) {
-          const wallet = refWalletSnap.data();
-          const amount = 500;
-          const transactions = wallet.transactions || [];
-          transactions.unshift({
-            id: Date.now().toString(),
-            type: "credit",
-            amount,
-            description: `Pending referral bonus from ${name} (Released after first purchase)`,
-            timestamp: Date.now(),
-            status: "pending", // NEW: mark as pending
-          });
-
-          await updateDoc(doc(db, "wallets", referrer.uid), {
-            pendingBalance: (wallet.pendingBalance || 0) + amount, // NEW: add to pending
-            transactions,
-          });
-
-          // Don't update referralBonus yet - wait for first purchase
-        }
-      }
+  // Send welcome email
+  try {
+    if (role === "seller") {
+      await emailService.sendSellerWelcomeEmail(email.trim(), name.trim());
+    } else {
+      await emailService.sendBuyerWelcomeEmail(email.trim(), name.trim());
     }
+  } catch (e) {
+    console.error("Email failed:", e);
+  }
 
-    // Save user
-    await setDoc(doc(db, "users", uid), user);
+  await soundManager.play('signup');  // Beautiful sound!
 
-    // Send welcome email
-    try {
-      if (role === "seller") {
-        await emailService.sendSellerWelcomeEmail(email.trim(), name.trim());
-      } else {
-        await emailService.sendBuyerWelcomeEmail(email.trim(), name.trim());
-      }
-    } catch (e) {
-      console.error("Email failed:", e);
-    }
-
-    await soundManager.play('signup');
-
-    return user;
-  },
+  return user;
+},
 
   // -----------------------------
   // USERS
@@ -397,16 +343,16 @@ export const firebaseService = {
     const updateData: any = { updatedAt: Date.now() };
 
     const allowedFields = [
-      "name", "description", "price", "stock", "subcategory",
-      "brand", "weight", "expiryDate", "isPrescriptionRequired",
-      "discount", "isFeatured", "tags", "imageUrls"
-    ];
+    "name", "description", "price", "stock", "subcategory",
+    "brand", "weight", "expiryDate", "isPrescriptionRequired",
+    "discount", "isFeatured", "tags", "imageUrls"
+  ];
 
     allowedFields.forEach((field) => {
-      if (data[field as keyof Product] !== undefined) {
-        updateData[field] = data[field as keyof Product];
-      }
-    });
+    if (data[field as keyof Product] !== undefined) {
+      updateData[field] = data[field as keyof Product];
+    }
+  });
 
     await updateDoc(productRef, updateData);
   },
@@ -417,177 +363,144 @@ export const firebaseService = {
   },
 
   // -----------------------------
-  // ORDERS - COMPLETE SYSTEM WITH REFERRAL BONUS RELEASE
+  // ORDERS - COMPLETE SYSTEM
   // -----------------------------
-  async createOrder(
-    buyerId: string,
-    sellerId: string,
-    products: OrderItem[],
-    deliveryAddress: string,
-    discount: number = 0,
-    phoneNumber?: string
-  ) {
-    // 1. Validate stock availability and calculate total
-    const productRefs = products.map(item =>
-      doc(db, "products", item.productId)
-    );
-    const productSnaps = await Promise.all(productRefs.map(ref => getDoc(ref)));
+  // Inside firebaseService
+async createOrder(
+  buyerId: string,
+  sellerId: string,
+  products: OrderItem[],
+  deliveryAddress: string,
+  discount: number = 0,
+  phoneNumber?: string
+) {
+  // 1. Validate stock availability and calculate total
+  const productRefs = products.map(item =>
+    doc(db, "products", item.productId)
+  );
+  const productSnaps = await Promise.all(productRefs.map(ref => getDoc(ref)));
 
-    let subtotal = 0;
-    const stockUpdates: Promise<void>[] = [];
+  let subtotal = 0;
+  const stockUpdates: Promise<void>[] = [];
 
-    for (let i = 0; i < products.length; i++) {
-      const item = products[i];
-      const snap = productSnaps[i];
+  for (let i = 0; i < products.length; i++) {
+    const item = products[i];
+    const snap = productSnaps[i];
 
-      if (!snap.exists()) {
-        throw new Error(`Product ${item.productName} no longer exists`);
-      }
-
-      const product = snap.data() as Product;
-
-      if (product.stock < item.quantity) {
-        throw new Error(`Insufficient stock for ${product.name}. Only ${product.stock} left.`);
-      }
-
-      const unitPrice = product.discount
-        ? product.price * (1 - product.discount / 100)
-        : product.price;
-
-      subtotal += unitPrice * item.quantity;
-
-      const newStock = product.stock - item.quantity;
-
-      if (newStock === 0) {
-        stockUpdates.push(deleteDoc(doc(db, "products", item.productId)));
-      } else if (newStock > 0) {
-        stockUpdates.push(
-          updateDoc(doc(db, "products", item.productId), {
-            stock: newStock,
-          })
-        );
-      }
+    if (!snap.exists()) {
+      throw new Error(`Product ${item.productName} no longer exists`);
     }
 
-    const totalAmount = subtotal - discount;
-    const commission = totalAmount * COMMISSION_RATE;
+    const product = snap.data() as Product;
 
-    // 2. Create the order
-    const orderRef = await addDoc(collection(db, "orders"), {
-      buyerId,
-      sellerId,
-      products,
-      totalAmount,
-      commission,
-      status: "running",
-      deliveryAddress,
-      phoneNumber,
-      disputeStatus: "none",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    if (product.stock < item.quantity) {
+      throw new Error(`Insufficient stock for ${product.name}. Only ${product.stock} left.`);
+    }
 
-    await updateDoc(orderRef, { id: orderRef.id });
+    // Calculate price (with product-level discount if any)
+    const unitPrice = product.discount
+      ? product.price * (1 - product.discount / 100)
+      : product.price;
 
-    // 3. Update product stocks
-    await Promise.all(stockUpdates);
+    subtotal += unitPrice * item.quantity;
 
-    // 4. Wallet updates
-    const sellerWallet = await this.getWallet(sellerId);
-    sellerWallet.pendingBalance += totalAmount - commission;
-    sellerWallet.transactions.unshift({
+    // Prepare stock update
+    const newStock = product.stock - item.quantity;
+
+    if (newStock === 0) {
+      // Schedule deletion
+      stockUpdates.push(deleteDoc(doc(db, "products", item.productId)));
+    } else if (newStock > 0) {
+      // Schedule stock reduction
+      stockUpdates.push(
+        updateDoc(doc(db, "products", item.productId), {
+          stock: newStock,
+        })
+      );
+    }
+    // If newStock < 0 → already prevented above
+  }
+
+  const totalAmount = subtotal - discount;
+  const commission = totalAmount * COMMISSION_RATE;
+
+  // 2. Create the order
+  const orderRef = await addDoc(collection(db, "orders"), {
+    buyerId,
+    sellerId,
+    products,
+    totalAmount,
+    commission,
+    status: "running",
+    deliveryAddress,
+    phoneNumber,
+    disputeStatus: "none",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  await updateDoc(orderRef, { id: orderRef.id });
+
+  // 3. Update product stocks (and delete if zero)
+  await Promise.all(stockUpdates);
+
+  // 4. Wallet updates (same as before)
+  const sellerWallet = await this.getWallet(sellerId);
+  sellerWallet.pendingBalance += totalAmount - commission;
+  sellerWallet.transactions.unshift({
+    id: Date.now().toString(),
+    type: "credit",
+    amount: totalAmount - commission,
+    description: `Pending payment for order #${orderRef.id.slice(-6)}`,
+    timestamp: Date.now(),
+  });
+  await this.updateWallet(sellerWallet);
+
+  // Admin commission
+  const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
+  if (!adminUsers.empty) {
+    const adminId = adminUsers.docs[0].id;
+    const adminWallet = await this.getWallet(adminId);
+    adminWallet.balance += commission;
+    adminWallet.transactions.unshift({
       id: Date.now().toString(),
       type: "credit",
-      amount: totalAmount - commission,
-      description: `Pending payment for order #${orderRef.id.slice(-6)}`,
+      amount: commission,
+      description: `Commission from order #${orderRef.id.slice(-6)}`,
       timestamp: Date.now(),
     });
-    await this.updateWallet(sellerWallet);
+    await this.updateWallet(adminWallet);
+  }
 
-    // Admin commission
-    const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
-    if (!adminUsers.empty) {
-      const adminId = adminUsers.docs[0].id;
-      const adminWallet = await this.getWallet(adminId);
-      adminWallet.balance += commission;
-      adminWallet.transactions.unshift({
-        id: Date.now().toString(),
-        type: "credit",
-        amount: commission,
-        description: `Commission from order #${orderRef.id.slice(-6)}`,
-        timestamp: Date.now(),
-      });
-      await this.updateWallet(adminWallet);
-    }
+  // 5. Send emails (unchanged)
+  const buyerDoc = await getDoc(doc(db, "users", buyerId));
+  const sellerDoc = await getDoc(doc(db, "users", sellerId));
 
-    // 5. NEW: Check if this is buyer's first purchase and release referral bonus
-    const buyerDoc = await getDoc(doc(db, "users", buyerId));
-    if (buyerDoc.exists()) {
-      const buyer = buyerDoc.data() as User;
-      
-      // If this is first purchase and buyer was referred
-      if (!buyer.hasCompletedFirstPurchase && buyer.referredBy) {
-        // Mark buyer as having completed first purchase
-        await updateDoc(doc(db, "users", buyerId), {
-          hasCompletedFirstPurchase: true,
-        });
+  if (buyerDoc.exists()) {
+    const buyer = buyerDoc.data();
+    await emailService.sendOrderConfirmation(
+      buyer.email,
+      buyer.name,
+      orderRef.id,
+      totalAmount,
+      products
+    );
+  }
 
-        // Release referral bonus to referrer's main balance
-        const referrerWallet = await this.getWallet(buyer.referredBy);
-        const bonusAmount = 500;
-        
-        // Move from pending to main balance
-        referrerWallet.pendingBalance = Math.max(0, referrerWallet.pendingBalance - bonusAmount);
-        referrerWallet.balance += bonusAmount;
-        
-        // Add transaction showing bonus release
-        referrerWallet.transactions.unshift({
-          id: Date.now().toString(),
-          type: "credit",
-          amount: bonusAmount,
-          description: `Referral bonus released! ${buyer.name} completed their first purchase`,
-          timestamp: Date.now(),
-          status: "completed",
-        });
-        
-        await this.updateWallet(referrerWallet);
+  if (sellerDoc.exists()) {
+    const seller = sellerDoc.data();
+    await emailService.sendSellerNotification(
+      seller.email,
+      seller.name,
+      orderRef.id,
+      totalAmount - commission,
+      'new_order'
+    );
+  }
 
-        // Update referrer's total referral bonus earned
-        const referrerDoc = await getDoc(doc(db, "users", buyer.referredBy));
-        if (referrerDoc.exists()) {
-          const referrer = referrerDoc.data() as User;
-          await updateDoc(doc(db, "users", buyer.referredBy), {
-            referralBonus: (referrer.referralBonus || 0) + bonusAmount,
-          });
-        }
-      }
-
-      // Send order confirmation email
-      await emailService.sendOrderConfirmation(
-        buyer.email,
-        buyer.name,
-        orderRef.id,
-        totalAmount,
-        products
-      );
-    }
-
-    // 6. Send seller notification
-    const sellerDoc = await getDoc(doc(db, "users", sellerId));
-    if (sellerDoc.exists()) {
-      const seller = sellerDoc.data();
-      await emailService.sendSellerNotification(
-        seller.email,
-        seller.name,
-        orderRef.id,
-        totalAmount - commission,
-        'new_order'
-      );
-    }
-
-    const snap = await getDoc(orderRef);
-    return snap.data() as Order;
-  },
+  const snap = await getDoc(orderRef);
+  return snap.data() as Order;
+},
 
   async getOrders(userId: string, role: UserRole): Promise<Order[]> {
     const ordersCol = collection(db, "orders");
@@ -601,6 +514,7 @@ export const firebaseService = {
     return snapshot.docs.map((doc) => doc.data() as Order).sort((a, b) => b.createdAt - a.createdAt);
   },
 
+  // BUYER CONFIRMS RECEIPT - Money moves from pending to available
   async confirmOrderDelivery(orderId: string, buyerId: string): Promise<void> {
     const orderRef = doc(db, "orders", orderId);
     const orderSnap = await getDoc(orderRef);
@@ -617,12 +531,14 @@ export const firebaseService = {
       throw new Error("Order is not in running status");
     }
 
+    // Update order status
     await updateDoc(orderRef, {
       status: "delivered",
       buyerConfirmed: true,
       updatedAt: Date.now(),
     });
 
+    // Transfer pending balance to seller's available balance
     const amount = order.totalAmount - order.commission;
     const sellerWallet = await this.getWallet(order.sellerId);
 
@@ -638,6 +554,7 @@ export const firebaseService = {
 
     await this.updateWallet(sellerWallet);
 
+    // Send email notifications
     const buyerDoc = await getDoc(doc(db, "users", buyerId));
     const sellerDoc = await getDoc(doc(db, "users", order.sellerId));
 
@@ -662,6 +579,7 @@ export const firebaseService = {
     }
   },
 
+  // SELLER CANCELS ORDER - Full refund to buyer
   async cancelOrderBySeller(
     orderId: string,
     sellerId: string,
@@ -682,6 +600,7 @@ export const firebaseService = {
       throw new Error("Order is not in running status");
     }
 
+    // Update order status
     await updateDoc(orderRef, {
       status: "cancelled",
       sellerCancelled: true,
@@ -689,9 +608,11 @@ export const firebaseService = {
       updatedAt: Date.now(),
     });
 
+    // Process refund
     const sellerWallet = await this.getWallet(order.sellerId);
     const buyerWallet = await this.getWallet(order.buyerId);
 
+    // Remove from seller's pending balance
     const amount = order.totalAmount - order.commission;
     sellerWallet.pendingBalance = Math.max(0, sellerWallet.pendingBalance - amount);
     sellerWallet.transactions.unshift({
@@ -704,6 +625,7 @@ export const firebaseService = {
 
     await this.updateWallet(sellerWallet);
 
+    // Full refund to buyer's available balance
     buyerWallet.balance += order.totalAmount;
     buyerWallet.transactions.unshift({
       id: Date.now().toString(),
@@ -715,6 +637,7 @@ export const firebaseService = {
 
     await this.updateWallet(buyerWallet);
 
+    // Refund commission to admin
     const adminUsers = await getDocs(
       query(collection(db, "users"), where("role", "==", "admin"))
     );
@@ -735,6 +658,7 @@ export const firebaseService = {
       await this.updateWallet(adminWallet);
     }
 
+    // Send email notifications
     const buyerDoc = await getDoc(doc(db, "users", order.buyerId));
     const sellerDoc = await getDoc(doc(db, "users", order.sellerId));
 
@@ -761,108 +685,115 @@ export const firebaseService = {
     }
   },
 
-  async cancelOrderByBuyer(
-    orderId: string,
-    buyerId: string,
-    reason: string
-  ): Promise<void> {
-    const orderRef = doc(db, "orders", orderId);
-    const orderSnap = await getDoc(orderRef);
+  // BUYER CANCELS ORDER - Updated to only allow before acknowledgment
+async cancelOrderByBuyer(
+  orderId: string,
+  buyerId: string,
+  reason: string
+): Promise<void> {
+  const orderRef = doc(db, "orders", orderId);
+  const orderSnap = await getDoc(orderRef);
 
-    if (!orderSnap.exists()) throw new Error("Order not found");
+  if (!orderSnap.exists()) throw new Error("Order not found");
 
-    const order = orderSnap.data() as Order;
+  const order = orderSnap.data() as Order;
 
-    if (order.buyerId !== buyerId) {
-      throw new Error("Unauthorized: Only buyer can cancel this order");
-    }
+  if (order.buyerId !== buyerId) {
+    throw new Error("Unauthorized: Only buyer can cancel this order");
+  }
 
-    if (order.status !== "running") {
-      throw new Error("Order is not in running status");
-    }
+  if (order.status !== "running") {
+    throw new Error("Order is not in running status");
+  }
 
-    if (order.trackingStatus) {
-      throw new Error("Cannot cancel order after seller has acknowledged it. Please open a dispute if there's an issue.");
-    }
+  // NEW: Check if order has been acknowledged by seller
+  if (order.trackingStatus) {
+    throw new Error("Cannot cancel order after seller has acknowledged it. Please open a dispute if there's an issue.");
+  }
 
-    await updateDoc(orderRef, {
-      status: "cancelled",
-      cancelReason: reason,
-      updatedAt: Date.now(),
-    });
+  // Update order status
+  await updateDoc(orderRef, {
+    status: "cancelled",
+    cancelReason: reason,
+    updatedAt: Date.now(),
+  });
 
-    const sellerWallet = await this.getWallet(order.sellerId);
-    const buyerWallet = await this.getWallet(order.buyerId);
+  // Refund process
+  const sellerWallet = await this.getWallet(order.sellerId);
+  const buyerWallet = await this.getWallet(order.buyerId);
 
-    const amount = order.totalAmount - order.commission;
-    sellerWallet.pendingBalance -= amount;
-    sellerWallet.transactions.unshift({
+  const amount = order.totalAmount - order.commission;
+  sellerWallet.pendingBalance -= amount;
+  sellerWallet.transactions.unshift({
+    id: Date.now().toString(),
+    type: "debit",
+    amount,
+    description: `Buyer cancelled order #${orderId.slice(-6)}`,
+    timestamp: Date.now(),
+  });
+
+  await this.updateWallet(sellerWallet);
+
+  buyerWallet.balance += order.totalAmount;
+  buyerWallet.transactions.unshift({
+    id: Date.now().toString(),
+    type: "credit",
+    amount: order.totalAmount,
+    description: `Refund for cancelled order #${orderId.slice(-6)}`,
+    timestamp: Date.now(),
+  });
+
+  await this.updateWallet(buyerWallet);
+
+  // Refund commission
+  const adminUsers = await getDocs(
+    query(collection(db, "users"), where("role", "==", "admin"))
+  );
+  
+  if (!adminUsers.empty) {
+    const adminId = adminUsers.docs[0].id;
+    const adminWallet = await this.getWallet(adminId);
+
+    adminWallet.balance -= order.commission;
+    adminWallet.transactions.unshift({
       id: Date.now().toString(),
       type: "debit",
-      amount,
-      description: `Buyer cancelled order #${orderId.slice(-6)}`,
+      amount: order.commission,
+      description: `Commission refund for cancelled order #${orderId.slice(-6)}`,
       timestamp: Date.now(),
     });
 
-    await this.updateWallet(sellerWallet);
+    await this.updateWallet(adminWallet);
+  }
 
-    buyerWallet.balance += order.totalAmount;
-    buyerWallet.transactions.unshift({
-      id: Date.now().toString(),
-      type: "credit",
-      amount: order.totalAmount,
-      description: `Refund for cancelled order #${orderId.slice(-6)}`,
-      timestamp: Date.now(),
-    });
+  // Send notifications
+  const buyerDoc = await getDoc(doc(db, "users", buyerId));
+  const sellerDoc = await getDoc(doc(db, "users", order.sellerId));
 
-    await this.updateWallet(buyerWallet);
-
-    const adminUsers = await getDocs(
-      query(collection(db, "users"), where("role", "==", "admin"))
+  if (buyerDoc.exists()) {
+    const buyer = buyerDoc.data();
+    await emailService.sendOrderCancelled(
+      buyer.email,
+      buyer.name,
+      orderId,
+      order.totalAmount,
+      reason
     );
-    
-    if (!adminUsers.empty) {
-      const adminId = adminUsers.docs[0].id;
-      const adminWallet = await this.getWallet(adminId);
+  }
 
-      adminWallet.balance -= order.commission;
-      adminWallet.transactions.unshift({
-        id: Date.now().toString(),
-        type: "debit",
-        amount: order.commission,
-        description: `Commission refund for cancelled order #${orderId.slice(-6)}`,
-        timestamp: Date.now(),
-      });
+  if (sellerDoc.exists()) {
+    const seller = sellerDoc.data();
+    await emailService.sendSellerNotification(
+      seller.email,
+      seller.name,
+      orderId,
+      order.totalAmount,
+      'cancelled_by_buyer'
+    );
+  }
+},
 
-      await this.updateWallet(adminWallet);
-    }
-
-    const buyerDoc = await getDoc(doc(db, "users", buyerId));
-    const sellerDoc = await getDoc(doc(db, "users", order.sellerId));
-
-    if (buyerDoc.exists()) {
-      const buyer = buyerDoc.data();
-      await emailService.sendOrderCancelled(
-        buyer.email,
-        buyer.name,
-        orderId,
-        order.totalAmount,
-        reason
-      );
-    }
-
-    if (sellerDoc.exists()) {
-      const seller = sellerDoc.data();
-      await emailService.sendSellerNotification(
-        seller.email,
-        seller.name,
-        orderId,
-        order.totalAmount,
-        'cancelled_by_buyer'
-      );
-    }
-  },
-
+  // OPEN DISPUTE
   async openDispute(
     orderId: string,
     userId: string,
@@ -889,6 +820,7 @@ export const firebaseService = {
       updatedAt: Date.now(),
     });
 
+    // Notify admin
     const adminUsers = await getDocs(
       query(collection(db, "users"), where("role", "==", "admin"))
     );
@@ -908,6 +840,7 @@ export const firebaseService = {
       }
     }
 
+    // Notify the other party
     const otherUserId = order.buyerId === userId ? order.sellerId : order.buyerId;
     const otherUserDoc = await getDoc(doc(db, "users", otherUserId));
     
@@ -921,134 +854,147 @@ export const firebaseService = {
     }
   },
 
+   // ADMIN RESOLVES DISPUTE
+
   async sendDisputeMessage(
-    orderId: string,
-    senderId: string,
-    senderRole: "buyer" | "seller" | "admin",
-    message: string
-  ): Promise<string> {
-    const ref = await addDoc(collection(db, "orders", orderId, "disputeChat"), {
-      senderId,
-      senderRole,
-      message: message.trim(),
+  orderId: string,
+  senderId: string,
+  senderRole: "buyer" | "seller" | "admin",
+  message: string
+): Promise<string> {
+  const ref = await addDoc(collection(db, "orders", orderId, "disputeChat"), {
+    senderId,
+    senderRole,
+    message: message.trim(),
+    timestamp: Date.now(),
+  });
+
+  await updateDoc(doc(db, "orders", orderId), {
+    updatedAt: Date.now(),
+  });
+
+  return ref.id;
+},
+
+
+  // ADMIN RESOLVES DISPUTE
+async resolveDispute(
+  orderId: string,
+  adminId: string,
+  resolution: "refund_buyer" | "release_to_seller",
+  adminNotes?: string
+): Promise<void> {
+  // Verify admin
+  const adminDoc = await getDoc(doc(db, "users", adminId));
+  if (!adminDoc.exists() || adminDoc.data()?.role !== "admin") {
+    throw new Error("Unauthorized: Only admin can resolve disputes");
+  }
+
+  const orderRef = doc(db, "orders", orderId);
+  const orderSnap = await getDoc(orderRef);
+  if (!orderSnap.exists()) throw new Error("Order not found");
+
+  const order = orderSnap.data() as Order;
+  if (order.disputeStatus !== "open") {
+    throw new Error("No open dispute for this order");
+  }
+
+  const updates: any = {
+    disputeStatus: "resolved",
+    adminNotes: adminNotes?.trim() || null,
+    resolvedByAdmin: true,
+    adminResolution: resolution === "refund_buyer" ? "cancelled" : "delivered",
+    updatedAt: Date.now(),
+  };
+
+  if (resolution === "refund_buyer") {
+    // Full refund to buyer + reverse commission
+    updates.status = "cancelled";
+
+    const buyerWallet = await this.getWallet(order.buyerId);
+    const sellerWallet = await this.getWallet(order.sellerId);
+
+    // Refund buyer full amount
+    buyerWallet.balance += order.totalAmount;
+    buyerWallet.transactions.unshift({
+      id: Date.now().toString(),
+      type: "credit",
+      amount: order.totalAmount,
+      description: `Refund: Admin resolved dispute in your favor - Order #${orderId.slice(-6)}`,
       timestamp: Date.now(),
     });
+    await this.updateWallet(buyerWallet);
 
-    await updateDoc(doc(db, "orders", orderId), {
-      updatedAt: Date.now(),
+    // Remove from seller's pending
+    sellerWallet.pendingBalance -= (order.totalAmount - order.commission);
+    sellerWallet.transactions.unshift({
+      id: Date.now().toString(),
+      type: "debit",
+      amount: order.totalAmount - order.commission,
+      description: `Dispute lost: Refunded to buyer (Admin resolution) - Order #${orderId.slice(-6)}`,
+      timestamp: Date.now(),
     });
+    await this.updateWallet(sellerWallet);
 
-    return ref.id;
-  },
-
-  async resolveDispute(
-    orderId: string,
-    adminId: string,
-    resolution: "refund_buyer" | "release_to_seller",
-    adminNotes?: string
-  ): Promise<void> {
-    const adminDoc = await getDoc(doc(db, "users", adminId));
-    if (!adminDoc.exists() || adminDoc.data()?.role !== "admin") {
-      throw new Error("Unauthorized: Only admin can resolve disputes");
-    }
-
-    const orderRef = doc(db, "orders", orderId);
-    const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists()) throw new Error("Order not found");
-
-    const order = orderSnap.data() as Order;
-    if (order.disputeStatus !== "open") {
-      throw new Error("No open dispute for this order");
-    }
-
-    const updates: any = {
-      disputeStatus: "resolved",
-      adminNotes: adminNotes?.trim() || null,
-      resolvedByAdmin: true,
-      adminResolution: resolution === "refund_buyer" ? "cancelled" : "delivered",
-      updatedAt: Date.now(),
-    };
-
-    if (resolution === "refund_buyer") {
-      updates.status = "cancelled";
-
-      const buyerWallet = await this.getWallet(order.buyerId);
-      const sellerWallet = await this.getWallet(order.sellerId);
-
-      buyerWallet.balance += order.totalAmount;
-      buyerWallet.transactions.unshift({
-        id: Date.now().toString(),
-        type: "credit",
-        amount: order.totalAmount,
-        description: `Refund: Admin resolved dispute in your favor - Order #${orderId.slice(-6)}`,
-        timestamp: Date.now(),
-      });
-      await this.updateWallet(buyerWallet);
-
-      sellerWallet.pendingBalance -= (order.totalAmount - order.commission);
-      sellerWallet.transactions.unshift({
+    // Refund commission to admin wallet
+    const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
+    if (!adminUsers.empty) {
+      const adminWallet = await this.getWallet(adminUsers.docs[0].id);
+      adminWallet.balance -= order.commission;
+      adminWallet.transactions.unshift({
         id: Date.now().toString(),
         type: "debit",
-        amount: order.totalAmount - order.commission,
-        description: `Dispute lost: Refunded to buyer (Admin resolution) - Order #${orderId.slice(-6)}`,
+        amount: order.commission,
+        description: `Commission reversed: Dispute resolved for buyer - Order #${orderId.slice(-6)}`,
         timestamp: Date.now(),
       });
-      await this.updateWallet(sellerWallet);
-
-      const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
-      if (!adminUsers.empty) {
-        const adminWallet = await this.getWallet(adminUsers.docs[0].id);
-        adminWallet.balance -= order.commission;
-        adminWallet.transactions.unshift({
-          id: Date.now().toString(),
-          type: "debit",
-          amount: order.commission,
-          description: `Commission reversed: Dispute resolved for buyer - Order #${orderId.slice(-6)}`,
-          timestamp: Date.now(),
-        });
-        await this.updateWallet(adminWallet);
-      }
-    } else {
-      updates.status = "delivered";
-
-      const sellerWallet = await this.getWallet(order.sellerId);
-      const amountToRelease = order.totalAmount - order.commission;
-
-      sellerWallet.pendingBalance -= amountToRelease;
-      sellerWallet.balance += amountToRelease;
-      sellerWallet.transactions.unshift({
-        id: Date.now().toString(),
-        type: "credit",
-        amount: amountToRelease,
-        description: `Payment released: Admin resolved dispute in your favor - Order #${orderId.slice(-6)}`,
-        timestamp: Date.now(),
-      });
-      await this.updateWallet(sellerWallet);
+      await this.updateWallet(adminWallet);
     }
+  } else {
+    // Release payment to seller
+    updates.status = "delivered";
 
-    await updateDoc(orderRef, updates);
+    const sellerWallet = await this.getWallet(order.sellerId);
+    const amountToRelease = order.totalAmount - order.commission;
 
-    const [buyerDoc, sellerDoc] = await Promise.all([
-      getDoc(doc(db, "users", order.buyerId)),
-      getDoc(doc(db, "users", order.sellerId)),
-    ]);
+    sellerWallet.pendingBalance -= amountToRelease;
+    sellerWallet.balance += amountToRelease;
+    sellerWallet.transactions.unshift({
+      id: Date.now().toString(),
+      type: "credit",
+      amount: amountToRelease,
+      description: `Payment released: Admin resolved dispute in your favor - Order #${orderId.slice(-6)}`,
+      timestamp: Date.now(),
+    });
+    await this.updateWallet(sellerWallet);
+  }
 
-    if (buyerDoc.exists() && sellerDoc.exists()) {
-      const buyer = buyerDoc.data()!;
-      const seller = sellerDoc.data()!;
+  // Apply all updates atomically
+  await updateDoc(orderRef, updates);
 
-      await emailService.sendDisputeResolved(
-        buyer.email,
-        buyer.name,
-        seller.email,
-        seller.name,
-        orderId,
-        resolution,
-        adminNotes || "No additional notes."
-      );
-    }
-  },
+  // Notify both parties
+  const [buyerDoc, sellerDoc] = await Promise.all([
+    getDoc(doc(db, "users", order.buyerId)),
+    getDoc(doc(db, "users", order.sellerId)),
+  ]);
 
+  if (buyerDoc.exists() && sellerDoc.exists()) {
+    const buyer = buyerDoc.data()!;
+    const seller = sellerDoc.data()!;
+
+    await emailService.sendDisputeResolved(
+      buyer.email,
+      buyer.name,
+      seller.email,
+      seller.name,
+      orderId,
+      resolution,
+      adminNotes || "No additional notes."
+    );
+  }
+},
+
+  // Legacy method for backward compatibility
   async updateOrderStatus(orderId: string, status: Order["status"]) {
     const orderRef = doc(db, "orders", orderId);
     const orderSnap = await getDoc(orderRef);
@@ -1102,8 +1048,13 @@ export const firebaseService = {
     await updateDoc(ref, { usedBy: coupon.usedBy });
   },
 
-  // -----------------------------
-  // DISPUTE CHAT
+
+
+//-----------
+
+
+
+ // DISPUTE CHAT - FIXED
   // -----------------------------
   listenToDisputeMessages(orderId: string, callback: (messages: DisputeMessage[]) => void) {
     const chatRef = collection(db, "orders", orderId, "disputeChat");
@@ -1113,17 +1064,31 @@ export const firebaseService = {
         .sort((a, b) => a.timestamp - b.timestamp);
       callback(msgs);
     });
-    return unsub;
+    return unsub; // ✅ synchronous cleanup function
   },
+
 
   async getOrder(orderId: string): Promise<Order | null> {
-    const snap = await getDoc(doc(db, "orders", orderId));
-    return snap.exists() ? (snap.data() as Order) : null;
-  },
+  const snap = await getDoc(doc(db, "orders", orderId));
+  return snap.exists() ? (snap.data() as Order) : null;
+},
 
-  // -----------------------------
-  // ORDER TRACKING
-  // -----------------------------
+
+
+
+
+
+
+
+
+
+
+
+// ------------------------------------------
+// DISPUTE CHAT
+// ------------------------------------------
+
+// NEW: Update order tracking status
   async updateOrderTracking(
     orderId: string,
     status: "acknowledged" | "enroute" | "ready_for_pickup"
@@ -1154,8 +1119,10 @@ export const firebaseService = {
       updatedAt: Date.now(),
     });
 
+    // Send push notification to buyer
     await this.sendTrackingNotification(order.buyerId, orderId, status);
 
+    // Send email notification
     const buyerDoc = await getDoc(doc(db, "users", order.buyerId));
     if (buyerDoc.exists()) {
       const buyer = buyerDoc.data();
@@ -1169,6 +1136,7 @@ export const firebaseService = {
     }
   },
 
+  // Helper method for tracking messages
   getTrackingMessage(status: string): string {
     switch (status) {
       case "acknowledged":
@@ -1182,15 +1150,26 @@ export const firebaseService = {
     }
   },
 
+  // NEW: Send tracking notification (placeholder - implement with your notification service)
   async sendTrackingNotification(
     userId: string,
     orderId: string,
     status: string
   ): Promise<void> {
+    // TODO: Implement push notification logic here
+    // This could use Firebase Cloud Messaging, Expo Push Notifications, or another service
     console.log(`Notification sent to user ${userId}: Order ${orderId} is now ${status}`);
-  },
-
-  // -----------------------------
+    
+    // Example structure:
+    // await pushNotificationService.send({
+    //   to: userId,
+    //   title: "Order Update",
+    //   body: this.getTrackingMessage(status),
+    //   data: { orderId, status }
+    // });
+  }, 
+  
+    // -----------------------------
   // NOTIFICATION SETTINGS
   // -----------------------------
   async getUserSettings(userId: string) {
@@ -1209,15 +1188,15 @@ export const firebaseService = {
     return setDoc(ref, { token: null }, { merge: true });
   },
 
-  listenToOrder(orderId: string, callback: (order: Order) => void) {
-    return onSnapshot(doc(db, "orders", orderId), (snap) => {
-      if (snap.exists()) {
-        callback(snap.data() as Order);
-      }
-    });
-  },
+   listenToOrder(orderId: string, callback: (order: Order) => void) {
+  return onSnapshot(doc(db, "orders", orderId), (snap) => {
+    if (snap.exists()) {
+      callback(snap.data() as Order);
+    }
+  });
+},
 
-  async updateBusinessProfile(
+async updateBusinessProfile(
   userId: string,
   data: {
     businessName: string;
@@ -1242,3 +1221,7 @@ export const firebaseService = {
   }
 },
 };
+
+
+
+

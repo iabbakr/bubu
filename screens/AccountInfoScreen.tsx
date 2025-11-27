@@ -9,6 +9,8 @@ import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { firebaseService } from "../services/firebaseService";
+import * as Clipboard from 'expo-clipboard';
+import { soundManager } from '../lib/soundManager';
 
 export default function AccountInfoScreen() {
   const { theme } = useTheme();
@@ -132,6 +134,45 @@ export default function AccountInfoScreen() {
               />
               {renderInfoRow("mail", "Email", email)}
               {renderInfoRow("gift", "Referral Code", user.referralCode || "Not provided")}
+              {user.referralBonus && user.referralBonus > 0 && (
+  <View style={[styles.infoRow, { backgroundColor: theme.primary + "10", borderColor: theme.primary }]}>
+    <View style={styles.infoLeft}>
+      <View style={[styles.iconContainer, { backgroundColor: theme.primary + "20" }]}>
+        <Feather name="award" size={20} color={theme.primary} />
+      </View>
+      <View style={styles.infoContent}>
+        <ThemedText type="label" style={{ color: theme.textSecondary, fontSize: 12 }}>
+          Total Referral Earnings
+        </ThemedText>
+        <ThemedText style={{ marginTop: Spacing.xs, fontWeight: "700", color: theme.primary }}>
+          ₦{user.referralBonus.toFixed(2)}
+        </ThemedText>
+        <ThemedText type="caption" style={{ marginTop: 2, color: theme.textSecondary }}>
+          From {Math.floor(user.referralBonus / 500)} successful referrals
+        </ThemedText>
+      </View>
+    </View>
+  </View>
+)}
+
+{user.referredBy && !user.hasCompletedFirstPurchase && (
+  <View style={[styles.infoRow, { backgroundColor: theme.warning + "10", borderColor: theme.warning }]}>
+    <View style={styles.infoLeft}>
+      <View style={[styles.iconContainer, { backgroundColor: theme.warning + "20" }]}>
+        <Feather name="info" size={20} color={theme.warning} />
+      </View>
+      <View style={styles.infoContent}>
+        <ThemedText type="label" style={{ color: theme.warning, fontSize: 12 }}>
+          Complete Your First Purchase
+        </ThemedText>
+        <ThemedText type="caption" style={{ marginTop: 2 }}>
+          Make your first purchase to unlock your referrer's bonus!
+        </ThemedText>
+      </View>
+    </View>
+  </View>
+)}
+
               {user.role === "seller" && renderInfoRow("briefcase", "Seller Category", user.sellerCategory || "Not specified")}
 
               <View style={styles.buttonRow}>

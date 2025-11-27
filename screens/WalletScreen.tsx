@@ -269,6 +269,16 @@ export default function WalletScreen() {
             >
               {showBalance ? `₦${wallet.pendingBalance.toFixed(2)}` : "****"}
             </ThemedText>
+            {/* NEW: Show info about pending referral bonuses */}
+  {wallet.transactions.some(t => t.status === "pending" && t.description.includes("referral")) && (
+    <ThemedText 
+      lightColor="#fff" 
+      darkColor="#fff" 
+      style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}
+    >
+      💡 Includes referral bonuses (released after first purchase)
+    </ThemedText>
+  )}
           </View>
 
           <View style={styles.actionButtons}>

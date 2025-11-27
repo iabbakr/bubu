@@ -57,26 +57,26 @@ export const Colors = {
 };
 
 export const Spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  "2xl": 32,
-  "3xl": 40,
-  "4xl": 48,
-  "5xl": 56,
+  xs: 2,
+  sm: 4,
+  md: 8,
+  lg: 12,
+  xl: 16,
+  "2xl": 24,
+  "3xl": 32,
+  "4xl": 40,
+  "5xl": 48,
   inputHeight: 48,
   buttonHeight: 48,
-  fabSize: 56,
+  fabSize: 48,
 };
 
 export const BorderRadius = {
-  xs: 6,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
+  xs: 4,
+  sm: 6,
+  md: 8,
+  lg: 12,
+  xl: 16,
   "2xl": 28,
   "3xl": 32,
   full: 9999,
@@ -84,36 +84,36 @@ export const BorderRadius = {
 
 export const Typography = {
   h1: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "700" as const,
   },
   h2: {
-    fontSize: 22,
-    fontWeight: "600" as const,
+    fontSize: 20,
+    fontWeight: "500" as const,
   },
   h3: {
-    fontSize: 18,
-    fontWeight: "600" as const,
+    fontSize: 16,
+    fontWeight: "500" as const,
   },
   h4: {
-    fontSize: 16,
-    fontWeight: "600" as const,
-  },
-  body: {
-    fontSize: 16,
-    fontWeight: "400" as const,
-  },
-  caption: {
-    fontSize: 14,
-    fontWeight: "400" as const,
-  },
-  label: {
     fontSize: 12,
     fontWeight: "500" as const,
   },
-  link: {
-    fontSize: 16,
+  body: {
+    fontSize: 12,
+    fontWeight: "300" as const,
+  },
+  caption: {
+    fontSize: 10,
+    fontWeight: "300" as const,
+  },
+  label: {
+    fontSize: 10,
     fontWeight: "400" as const,
+  },
+  link: {
+    fontSize: 12,
+    fontWeight: "300" as const,
   },
 };
 

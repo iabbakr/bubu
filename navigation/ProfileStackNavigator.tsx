@@ -28,6 +28,7 @@ import { Pressable } from "react-native";
 import HelpCenterScreen from "@/screens/HelpCenterScreen";
 import LanguageScreen from "@/screens/LanguageScreen";
 import i18n from "@/lib/i18n";
+import CartScreen from "@/screens/CartScreen";
 
 export type ProfileStackParamList = {
   Profile: undefined;
@@ -48,6 +49,7 @@ export type ProfileStackParamList = {
   AdminSupportChat: { chatId: string };
   HelpCenter: undefined;
   Language: undefined;
+  Cart: undefined;
 
 };
 
@@ -77,7 +79,7 @@ export default function ProfileStackNavigator() {
                 }
             }}
           >
-        <Feather name="headphones" size={24} color={theme.primary} />
+        <Feather name="headphones" size={24} style={{margin:5}}color={theme.primary} />
       </Pressable>
     ),
   })}
@@ -157,6 +159,15 @@ export default function ProfileStackNavigator() {
             component={HelpCenterScreen}
             options={{
               title: "Help Center",
+              headerBackTitle: "Back",
+            }}
+          />
+
+          <Stack.Screen
+            name="Cart"
+            component={CartScreen}
+            options={{
+              title: i18n.t("cart"),
               headerBackTitle: "Back",
             }}
           />

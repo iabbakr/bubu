@@ -1,3 +1,5 @@
+// components/TextInputField.tsx
+
 import { TextInput, View, StyleSheet, Pressable } from "react-native";
 import { ThemedText } from "./ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -14,7 +16,7 @@ interface TextInputFieldProps {
   keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
   multiline?: boolean;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
-  rightIcon?: React.ReactNode; // Added for password toggle or other icons
+  rightIcon?: React.ReactNode;
 }
 
 export function TextInputField({
@@ -38,17 +40,22 @@ export function TextInputField({
           {label}
         </ThemedText>
       )}
-      <View style={[styles.inputWrapper, { borderColor: error ? theme.error : theme.border }]}>
+
+      <View style={[
+        styles.inputWrapper,
+        {
+          borderColor: error ? theme.error : theme.border,
+          borderWidth: error ? 2 : 1,
+          backgroundColor: theme.backgroundSecondary,
+        }
+      ]}>
         <TextInput
           style={[
             styles.input,
             {
-              backgroundColor: theme.backgroundSecondary,
-              borderWidth: error ? 2 : 1,
               color: theme.text,
-              minHeight: multiline ? 100 : Spacing.inputHeight,
-              textAlignVertical: multiline ? "top" : "center",
-            }
+              paddingRight: rightIcon ? 50 : Spacing.md, // Make space for icon
+            },
           ]}
           value={value}
           onChangeText={onChangeText}
@@ -59,8 +66,15 @@ export function TextInputField({
           multiline={multiline}
           autoCapitalize={autoCapitalize}
         />
-        {rightIcon && <View style={styles.iconContainer}>{rightIcon}</View>}
+
+        {/* Right Icon (Eye) - Positioned Absolutely Inside */}
+        {rightIcon && (
+          <View style={styles.rightIconContainer}>
+            {rightIcon}
+          </View>
+        )}
       </View>
+
       {error && (
         <ThemedText type="caption" style={{ color: theme.error, marginTop: Spacing.xs }}>
           {error}
@@ -79,8 +93,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   inputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
+    position: "relative",
     borderRadius: BorderRadius.sm,
     overflow: "hidden",
   },
@@ -89,8 +102,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     fontSize: 16,
+    minHeight: Spacing.inputHeight,
   },
-  iconContainer: {
+  rightIconContainer: {
+    position: "absolute",
+    right: Spacing.sm,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
     paddingHorizontal: Spacing.sm,
+    zIndex: 10,
   },
 });

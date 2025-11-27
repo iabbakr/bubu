@@ -1,6 +1,4 @@
-// screens/SupermarketScreen.tsx
-
-import { View, StyleSheet, Pressable, Alert, SectionList } from "react-native";
+import { View, StyleSheet, Pressable, Alert, FlatList, Dimensions } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -17,11 +15,59 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
+import { Animated } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type SupermarketScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   'Supermarket'
 >;
+
+interface CategoryData {
+  name: string;
+  count: number;
+  icon: string;
+  color: string;
+}
+
+const ScreenHeader = ({ navigation, cartItemCount, theme, selectedState, selectedCity, selectedArea, onLocationChange }: { 
+  navigation: SupermarketScreenNavigationProp, 
+  cartItemCount: number, 
+  theme: ReturnType<typeof useTheme>['theme'],
+  selectedState: string | null,
+  selectedCity: string | null,
+  selectedArea: string | null,
+  onLocationChange: (state: string | null, city: string | null, area: string | null) => void,
+}) => (
+  <SafeAreaView edges={['top']} style={[styles.screenHeader, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
+    <View style={styles.screenHeaderContent}>
+      <View style={styles.screenHeaderLocation}>
+        <LocationFilterWithCityAndArea
+          selectedState={selectedState}
+          selectedCity={selectedCity}
+          selectedArea={selectedArea}
+          style={styles.locationFilterInHeader} 
+          onChange={onLocationChange}
+          hideLabels={true} 
+        />
+      </View>
+      
+      <Pressable
+        style={styles.headerCartButton}
+        onPress={() => navigation.navigate("Cart" as never)}
+      >
+        <Feather name="shopping-cart" size={24} color={theme.text} />
+        {cartItemCount > 0 && (
+          <View style={[styles.badge, { backgroundColor: theme.error }]}>
+            <ThemedText style={styles.badgeText} lightColor="#fff" darkColor="#fff">
+              {cartItemCount}
+            </ThemedText>
+          </View>
+        )}
+      </Pressable>
+    </View>
+  </SafeAreaView>
+);
 
 export default function SupermarketScreen() {
   const { theme } = useTheme();
@@ -37,6 +83,7 @@ export default function SupermarketScreen() {
   const [selectedCity, setSelectedCity] = useState<string | null>(user?.location?.city || null);
   const [selectedArea, setSelectedArea] = useState<string | null>(user?.location?.area || null);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -92,57 +139,77 @@ export default function SupermarketScreen() {
     Alert.alert("Added!", `${product.name} added to cart`);
   };
 
-  // Group products by subcategory for category view
-  const getProductsByCategory = () => {
-    const categories = new Map<string, Product[]>();
+  const getCategoryColor = (category: string): string => {
+    const colorMap: { [key: string]: string } = {
+      'Fruits': '#FF6B6B',
+      'Vegetables': '#51CF66',
+      'Dairy': '#74C0FC',
+      'Meat': '#FF8787',
+      'Bakery': '#FFD43B',
+      'Beverages': '#CC5DE8',
+      'Snacks': '#FF922B',
+      'Frozen': '#4DABF7',
+      'Other': '#868E96',
+    };
+    return colorMap[category] || '#868E96';
+  };
+
+  const getCategoryIcon = (category: string): string => {
+    const iconMap: { [key: string]: string } = {
+      'Fruits': 'apple',
+      'Vegetables': 'leaf',
+      'Dairy': 'droplet',
+      'Meat': 'package',
+      'Bakery': 'coffee',
+      'Beverages': 'cup',
+      'Snacks': 'gift',
+      'Frozen': 'wind',
+      'Other': 'grid',
+    };
+    return iconMap[category] || 'box';
+  };
+
+  const getCategories = (): CategoryData[] => {
+    const categories = new Map<string, number>();
     
     filteredProducts.forEach(product => {
       const category = product.subcategory || "Other";
-      if (!categories.has(category)) {
-        categories.set(category, []);
-      }
-      categories.get(category)!.push(product);
+      categories.set(category, (categories.get(category) || 0) + 1);
     });
 
-    return Array.from(categories.entries()).map(([title, data]) => ({
-      title,
-      data,
-    }));
+    return Array.from(categories.entries())
+      .map(([name, count]) => ({
+        name,
+        count,
+        icon: getCategoryIcon(name),
+        color: getCategoryColor(name),
+      }))
+      .sort((a, b) => b.count - a.count);
+  };
+
+  const getCategoryProducts = (category: string): Product[] => {
+    return filteredProducts.filter(p => (p.subcategory || "Other") === category);
   };
 
   const renderHeader = () => (
-    <View style={styles.header}>
-      <View style={styles.headerTop}>
-        <View>
-          <ThemedText type="h2">Fresh Groceries</ThemedText>
-          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
-            {selectedState 
-              ? selectedCity
-                ? selectedArea
-                  ? `Products in ${selectedArea}, ${selectedCity}`
-                  : `Products in ${selectedCity}, ${selectedState}`
-                : `Products in ${selectedState}`
-              : "Quality products delivered to your door"
-            }
-          </ThemedText>
-        </View>
+    <Animated.View style={[styles.headerContainer, { backgroundColor: theme.cardBackground }]}>
+      <View>
+        <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: Spacing.sm }}>
+          {selectedState 
+            ? selectedCity
+              ? selectedArea
+                ? `Products in ${selectedArea}, ${selectedCity}`
+                : `Products in ${selectedCity}, ${selectedState}`
+              : `Products in ${selectedState}`
+            : "Quality products delivered to your door"
+          }
+        </ThemedText>
       </View>
 
       <SearchBar value={search} onChange={setSearch} />
-
-      <LocationFilterWithCityAndArea
-        selectedState={selectedState}
-        selectedCity={selectedCity}
-        selectedArea={selectedArea}
-        onChange={(state, city, area) => {
-          setSelectedState(state);
-          setSelectedCity(city);
-          setSelectedArea(area);
-        }}
-      />
-
+      
       <ViewModeSelector selected={viewMode} onChange={setViewMode} />
-    </View>
+    </Animated.View>
   );
 
   const renderEmpty = () => (
@@ -174,45 +241,130 @@ export default function SupermarketScreen() {
     </View>
   );
 
-  const renderCategoryView = () => {
-    const sections = getProductsByCategory();
-    
+  const renderCategoryList = () => {
+    const categories = getCategories();
+
     return (
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.listItem}>
-            <ProductCard
-              product={item}
-              onPress={() => navigation.navigate("ProductDetail", { productId: item.id })}
-              viewMode="list"
-              onAddToCart={() => handleAddToCart(item)}
-            />
-          </View>
-        )}
-        renderSectionHeader={({ section: { title, data } }) => (
-          <View style={[styles.categoryHeader, { backgroundColor: theme.background }]}>
-            <ThemedText type="h3">{title}</ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
-              {data.length} product{data.length !== 1 ? 's' : ''}
+      <View style={styles.categoryListContainer}>
+        <View style={styles.categoryListHeader}>
+          <ThemedText type="h3">Browse by Category</ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 4 }}>
+            {categories.length} categories available
+          </ThemedText>
+        </View>
+
+        {categories.map((category, index) => (
+          <Pressable
+            key={category.name}
+            style={[
+              styles.categoryListItem, 
+              { 
+                backgroundColor: theme.cardBackground,
+                borderBottomColor: theme.border,
+                borderBottomWidth: index < categories.length - 1 ? StyleSheet.hairlineWidth : 0,
+              }
+            ]}
+            onPress={() => setSelectedCategory(category.name)}
+          >
+            <View style={styles.categoryListLeft}>
+              <View style={[styles.categoryIconCircle, { backgroundColor: category.color + '20' }]}>
+                <Feather name={category.icon as any} size={24} color={category.color} />
+              </View>
+              <View style={styles.categoryListInfo}>
+                <ThemedText type="defaultSemiBold">{category.name}</ThemedText>
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  {category.count} product{category.count !== 1 ? 's' : ''}
+                </ThemedText>
+              </View>
+            </View>
+            <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+          </Pressable>
+        ))}
+      </View>
+    );
+  };
+
+  const renderCategoryProducts = () => {
+    if (!selectedCategory) return null;
+
+    const categoryProducts = getCategoryProducts(selectedCategory);
+    const categoryData = getCategories().find(c => c.name === selectedCategory);
+
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <View style={[styles.categoryProductsHeader, { backgroundColor: categoryData?.color, borderBottomColor: theme.border }]}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() => setSelectedCategory(null)}
+          >
+            <Feather name="arrow-left" size={24} color="#fff" />
+          </Pressable>
+          <View style={styles.categoryProductsTitle}>
+            <ThemedText type="h2" lightColor="#fff" darkColor="#fff">{selectedCategory}</ThemedText>
+            <ThemedText type="caption" lightColor="rgba(255,255,255,0.8)" darkColor="rgba(255,255,255,0.8)">
+              {categoryProducts.length} product{categoryProducts.length !== 1 ? 's' : ''}
             </ThemedText>
           </View>
-        )}
-        contentContainerStyle={styles.categoryList}
-        stickySectionHeadersEnabled={true}
-      />
+        </View>
+
+        <ScreenScrollView>
+          <View style={styles.list}>
+            {categoryProducts.map(product => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                onPress={() => navigation.navigate("ProductDetail", { productId: product.id })}
+                viewMode="list"
+                onAddToCart={() => handleAddToCart(product)}
+              />
+            ))}
+          </View>
+        </ScreenScrollView>
+      </View>
     );
   };
 
   const cartItemCount = getTotalItems();
 
+  const handleLocationChange = (state: string | null, city: string | null, area: string | null) => {
+    setSelectedState(state);
+    setSelectedCity(city);
+    setSelectedArea(area);
+  };
+
+  if (selectedCategory) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <ScreenHeader 
+          navigation={navigation} 
+          cartItemCount={cartItemCount} 
+          theme={theme} 
+          selectedState={selectedState}
+          selectedCity={selectedCity}
+          selectedArea={selectedArea}
+          onLocationChange={handleLocationChange}
+        /> 
+        {renderCategoryProducts()}
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <ScreenHeader 
+        navigation={navigation} 
+        cartItemCount={cartItemCount} 
+        theme={theme} 
+        selectedState={selectedState}
+        selectedCity={selectedCity}
+        selectedArea={selectedArea}
+        onLocationChange={handleLocationChange}
+      /> 
+
       {viewMode === "category" ? (
-        <>
-          <View style={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg }}>
-            {renderHeader()}
+        <ScreenScrollView>
+          <View>
+            {renderHeader()} 
           </View>
           {loading ? (
             <View style={styles.loading}>
@@ -223,12 +375,14 @@ export default function SupermarketScreen() {
           ) : filteredProducts.length === 0 ? (
             renderEmpty()
           ) : (
-            renderCategoryView()
+            renderCategoryList()
           )}
-        </>
+        </ScreenScrollView>
       ) : (
         <ScreenScrollView>
-          {renderHeader()}
+          <View>
+            {renderHeader()}
+          </View>
 
           {loading ? (
             <View style={styles.loading}>
@@ -266,54 +420,105 @@ export default function SupermarketScreen() {
           )}
         </ScreenScrollView>
       )}
-
-      {cartItemCount > 0 && (
-        <Pressable
-          style={[styles.fab, { backgroundColor: theme.primary }]}
-          onPress={() => navigation.navigate("Cart" as never)}
-        >
-          <Feather name="shopping-cart" size={24} color={theme.buttonText} />
-          <View style={[styles.badge, { backgroundColor: theme.error }]}>
-            <ThemedText style={styles.badgeText} lightColor="#fff" darkColor="#fff">
-              {cartItemCount}
-            </ThemedText>
-          </View>
-        </Pressable>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
+  screenHeader: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  screenHeaderContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+  },
+  screenHeaderLocation: {
+    flex: 1, 
+    marginRight: Spacing.md,
+  },
+  locationFilterInHeader: {
+    paddingVertical: 0,
+  },
+  headerCartButton: {
+    padding: Spacing.sm,
+  },
+  headerContainer: {
+    padding: 5,
+    paddingTop: 4,
+    borderRadius: BorderRadius.xl,
+    marginBottom: Spacing.md,
+    margin: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 0,
+    backgroundColor: "transparent",
+  },
+  categoryListContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 100,
+  },
+  categoryListHeader: {
     marginBottom: Spacing.lg,
   },
-  headerTop: {
-    marginBottom: Spacing.md,
+  categoryListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.xs,
+  },
+  categoryListLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  categoryIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  categoryListInfo: {
+    flex: 1,
+  },
+  categoryProductsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xl,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  backButton: {
+    padding: Spacing.sm,
+    marginRight: Spacing.md,
+  },
+  categoryProductsTitle: {
+    flex: 1,
   },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginHorizontal: -Spacing.sm,
-    paddingBottom: 100,
+    marginHorizontal: 0, 
+    paddingHorizontal: 0,
+    width: "100%",
   },
   gridItem: {
     width: "50%",
     paddingHorizontal: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   list: {
-    paddingBottom: 100,
-  },
-  listItem: {
-    marginBottom: 0,
-  },
-  categoryList: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: 100,
-  },
-  categoryHeader: {
-    paddingVertical: Spacing.md,
-    marginBottom: Spacing.sm,
   },
   empty: {
     alignItems: "center",
@@ -330,34 +535,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: Spacing["5xl"],
   },
-  fab: {
-    position: "absolute",
-    right: Spacing.lg,
-    bottom: 104,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
   badge: {
     position: "absolute",
-    top: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    top: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     justifyContent: "center",
     alignItems: "center",
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "700",
   },
 });

@@ -21,10 +21,11 @@ export default function SupermarketStackNavigator() {
   return (
     <Stack.Navigator screenOptions={getCommonScreenOptions({ theme, isDark })}>
       <Stack.Screen
+        
         name="Supermarket"
         component={SupermarketScreen}
         options={{
-          headerTitle: () => <HeaderTitle title="SuperMarket" />,
+          headerShown: false
         }}
       />
       <Stack.Screen

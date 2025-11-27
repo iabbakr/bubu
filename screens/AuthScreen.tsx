@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, StyleSheet, Pressable, Text } from "react-native";
+import { View, StyleSheet, Pressable, Text, Modal, Image } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "../components/ThemedText";
 import { TextInputField } from "../components/TextInputField";
@@ -11,6 +11,43 @@ import { Spacing, BorderRadius } from "../constants/theme";
 import { LocationSelector } from "../components/LocationSelector";
 import { Location } from "../types/location";
 
+type TermsModalProps = {
+  visible: boolean;
+  onClose: () => void;
+};
+
+/* -----------------------------------------------------
+   TERMS & PRIVACY MODAL
+----------------------------------------------------- */
+
+const TermsModal = ({ visible, onClose }: TermsModalProps) => {
+  return (
+    <Modal visible={visible} animationType="slide" transparent={false}>
+      <View style={{ flex: 1, padding: 20 }}>
+        <Pressable
+          onPress={onClose}
+          style={{ alignSelf: "flex-end", padding: 10 }}
+        >
+          <Feather name="x" size={28} />
+        </Pressable>
+
+        <Text style={{ fontSize: 24, fontWeight: "700", marginBottom: 20 }}>
+          Terms & Conditions
+        </Text>
+
+        <Text style={{ fontSize: 16, lineHeight: 22 }}>
+          Add your full Terms & Conditions and Privacy Policy text here...
+          {"\n\n"}
+          You can always move this to a separate file later.
+        </Text>
+      </View>
+    </Modal>
+  );
+};
+
+/* -----------------------------------------------------
+   MAIN COMPONENT
+----------------------------------------------------- */
 export default function AuthScreen() {
   const { theme } = useTheme();
   const { signIn, signUp } = useAuth();
@@ -26,16 +63,16 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [sellerCategory, setSellerCategory] = useState<"supermarket" | "pharmacy">("supermarket");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [sellerCategory, setSellerCategory] = useState<"supermarket" | "pharmacy">("supermarket");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   const handleSubmit = async () => {
     setError("");
 
-    // Validation
     if (!email || !password) {
       setError("Email and password are required");
       return;
@@ -67,6 +104,7 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       let success = false;
+
       if (isSignUp) {
         success = await signUp(
           email.trim(),
@@ -148,9 +186,13 @@ export default function AuthScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={[styles.header, { backgroundColor: theme.backgroundSecondary }]}>
-          <Feather name="shopping-bag" size={64} color={theme.primary} />
+          <Image
+            source={require("@/assets/images/icon.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <ThemedText type="h1" style={{ marginTop: Spacing.lg }}>
-            MarketHub
+            Bubu
           </ThemedText>
           <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
             Your one-stop marketplace
@@ -163,22 +205,14 @@ export default function AuthScreen() {
             {isSignUp ? "Create Account" : "Welcome Back"}
           </ThemedText>
 
+          {/* --- SIGN UP ONLY FIELDS --- */}
           {isSignUp && (
             <>
-              <TextInputField
-                label="Full Name"
-                value={name}
-                onChangeText={setName}
-                placeholder="Enter your name"
-              />
-              <TextInputField
-                label="Phone Number (Optional)"
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="Enter phone number"
-                keyboardType="phone-pad"
-              />
+              <TextInputField label="Full Name" value={name} onChangeText={setName} placeholder="Enter your name" />
+              <TextInputField label="Phone Number (Optional)" value={phone} onChangeText={setPhone} placeholder="Enter phone number" keyboardType="phone-pad" />
+
               <ThemedText type="label" style={{ marginBottom: Spacing.sm }}>GENDER</ThemedText>
+
               <View style={styles.genderContainer}>
                 {renderGenderButton("male", "Male")}
                 {renderGenderButton("female", "Female")}
@@ -188,13 +222,13 @@ export default function AuthScreen() {
               <ThemedText type="label" style={{ marginBottom: Spacing.sm, marginTop: Spacing.md }}>
                 SELECT YOUR ROLE
               </ThemedText>
+
               <View style={styles.roleContainer}>
                 {renderRoleButton("buyer", "Buyer", "shopping-cart")}
                 {renderRoleButton("seller", "Seller", "briefcase")}
                 {renderRoleButton("admin", "Admin", "shield")}
               </View>
 
-              {/* Seller Category */}
               {selectedRole === "seller" && (
                 <View style={{ marginBottom: Spacing.md }}>
                   <ThemedText type="label" style={{ marginBottom: 5 }}>SELLER CATEGORY</ThemedText>
@@ -214,6 +248,7 @@ export default function AuthScreen() {
                         Supermarket
                       </ThemedText>
                     </Pressable>
+
                     <Pressable
                       onPress={() => setSellerCategory("pharmacy")}
                       style={[
@@ -233,19 +268,10 @@ export default function AuthScreen() {
                 </View>
               )}
 
-              <TextInputField
-                label="Referral Code (Optional)"
-                value={referralCode}
-                onChangeText={setReferralCode}
-                placeholder="Enter referral code"
-              />
+              <TextInputField label="Referral Code (Optional)" value={referralCode} onChangeText={setReferralCode} placeholder="Enter referral code" />
 
-              <LocationSelector
-                value={location}
-                onChange={setLocation}
-                label="Location (State, City & Area)"
-              />
-              
+              <LocationSelector value={location} onChange={setLocation} label="Location (State, City & Area)" />
+
               {location && (
                 <View style={[styles.locationPreview, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
                   <Feather name="map-pin" size={16} color={theme.primary} />
@@ -257,6 +283,7 @@ export default function AuthScreen() {
             </>
           )}
 
+          {/* --- EMAIL --- */}
           <TextInputField
             label="Email"
             value={email}
@@ -265,6 +292,8 @@ export default function AuthScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
           />
+
+          {/* --- PASSWORD --- */}
           <TextInputField
             label="Password"
             value={password}
@@ -277,6 +306,18 @@ export default function AuthScreen() {
               </Pressable>
             }
           />
+
+          {/* FORGOT PASSWORD */}
+          {!isSignUp && (
+            <Pressable
+              onPress={() => console.log("Forgot Password pressed")}
+              style={{ alignSelf: "flex-end", marginBottom: Spacing.md, marginTop: -Spacing.xs }}
+            >
+              <Text style={{ color: theme.primary, fontWeight: "600" }}>Forgot Password?</Text>
+            </Pressable>
+          )}
+
+          {/* CONFIRM PASSWORD */}
           {isSignUp && (
             <TextInputField
               label="Confirm Password"
@@ -292,21 +333,30 @@ export default function AuthScreen() {
             />
           )}
 
+          {/* TERMS & PRIVACY */}
           {isSignUp && (
-            <Pressable
-              onPress={() => setTermsAccepted(!termsAccepted)}
-              style={styles.termsContainer}
-            >
-              <View style={[styles.checkbox, { borderColor: theme.border }]}>
+            <Pressable style={styles.termsContainer}>
+              <Pressable
+                onPress={() => setTermsAccepted(!termsAccepted)}
+                style={[styles.checkbox, { borderColor: theme.border }]}
+              >
                 {termsAccepted && <Feather name="check" size={16} color={theme.primary} />}
-              </View>
+              </Pressable>
+
               <Text style={{ color: theme.text, flex: 1 }}>
-                I accept the <Text style={{ color: theme.primary, fontWeight: "600" }}>Terms & Conditions</Text> and{" "}
-                <Text style={{ color: theme.primary, fontWeight: "600" }}>Privacy Policy</Text>
+                I accept the{" "}
+                <Text onPress={() => setShowTermsModal(true)} style={{ color: theme.primary, fontWeight: "600" }}>
+                  Terms & Conditions
+                </Text>{" "}
+                and{" "}
+                <Text onPress={() => setShowTermsModal(true)} style={{ color: theme.primary, fontWeight: "600" }}>
+                  Privacy Policy
+                </Text>
               </Text>
             </Pressable>
           )}
 
+          {/* ERROR */}
           {error ? (
             <View style={[styles.errorContainer, { backgroundColor: "#fee" }]}>
               <Feather name="alert-circle" size={16} color="#c00" />
@@ -314,12 +364,10 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
-          <PrimaryButton
-            title={isSignUp ? "Sign Up" : "Sign In"}
-            onPress={handleSubmit}
-            loading={loading}
-          />
+          {/* BUTTON */}
+          <PrimaryButton title={isSignUp ? "Sign Up" : "Sign In"} onPress={handleSubmit} loading={loading} />
 
+          {/* SWITCH LOGIN/SIGNUP */}
           <Pressable
             style={styles.switchButton}
             onPress={() => {
@@ -335,18 +383,30 @@ export default function AuthScreen() {
             </ThemedText>
           </Pressable>
         </View>
+
+        {/* TERMS MODAL */}
+        <TermsModal visible={showTermsModal} onClose={() => setShowTermsModal(false)} />
       </View>
     </ScreenKeyboardAwareScrollView>
   );
 }
 
+/* -----------------------------------------------------
+   STYLES
+----------------------------------------------------- */
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     alignItems: "center",
     padding: Spacing["3xl"],
+    paddingHorizontal: Spacing.xl,
     borderRadius: BorderRadius.md,
     marginBottom: Spacing.xl,
+  },
+  logo: {
+    width: 100,        // Adjust size as needed
+    height: 100,
+    marginBottom: Spacing.md,
   },
   form: { flex: 1 },
   roleContainer: {

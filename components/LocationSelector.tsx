@@ -6,44 +6,44 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { getAllStates, getCitiesByState, getAreasByCity } from "../types/location";
 import { Location } from "../types/location";
-
+ 
 interface LocationSelectorProps {
   value: Location | null;
   onChange: (location: Location) => void;
   label?: string;
 }
-
+ 
 export function LocationSelector({ value, onChange, label }: LocationSelectorProps) {
   const { theme } = useTheme();
   const [selectedState, setSelectedState] = useState<string | null>(value?.state || null);
   const [selectedCity, setSelectedCity] = useState<string | null>(value?.city || null);
   const [selectedArea, setSelectedArea] = useState<string | null>(value?.area || null);
   const [showModal, setShowModal] = useState<"state" | "city" | "area" | null>(null);
-
+ 
   const states = getAllStates();
   const cities = selectedState ? getCitiesByState(selectedState) : [];
   const areas = selectedState && selectedCity ? getAreasByCity(selectedState, selectedCity) : [];
-
+ 
   useEffect(() => {
     if (selectedState && !cities.includes(selectedCity || "")) {
       setSelectedCity(null);
       setSelectedArea(null);
     }
   }, [selectedState]);
-
+ 
   useEffect(() => {
     if (selectedCity && !areas.includes(selectedArea || "")) {
       setSelectedArea(null);
     }
   }, [selectedCity]);
-
+ 
   const handleConfirmArea = () => {
     if (selectedState && selectedCity && selectedArea) {
       onChange({ state: selectedState, city: selectedCity, area: selectedArea });
       setShowModal(null);
     }
   };
-
+ 
   const getDisplayText = () => {
     if (selectedState && selectedCity && selectedArea) {
       return `${selectedState}, ${selectedCity}, ${selectedArea}`;
@@ -54,11 +54,11 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
     }
     return "Select location";
   };
-
+ 
   return (
     <View style={{ marginBottom: Spacing.md }}>
       {label && <ThemedText style={{ marginBottom: Spacing.sm }}>{label}</ThemedText>}
-
+ 
       <Pressable
         style={[styles.selectorButton, { borderColor: theme.border, backgroundColor: theme.backgroundSecondary }]}
         onPress={() => setShowModal("state")}
@@ -69,7 +69,7 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
         </ThemedText>
         <Feather name="chevron-down" size={18} color={theme.textSecondary} />
       </Pressable>
-
+ 
       {/* STATE SELECTION */}
       <Modal visible={showModal === "state"} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -108,7 +108,7 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
           </View>
         </View>
       </Modal>
-
+ 
       {/* CITY SELECTION */}
       <Modal visible={showModal === "city"} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -149,7 +149,7 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
           </View>
         </View>
       </Modal>
-
+ 
       {/* AREA SELECTION */}
       <Modal visible={showModal === "area"} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -196,7 +196,7 @@ export function LocationSelector({ value, onChange, label }: LocationSelectorPro
     </View>
   );
 }
-
+ 
 const styles = StyleSheet.create({
   selectorButton: {
     flexDirection: "row",

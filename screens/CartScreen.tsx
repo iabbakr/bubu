@@ -11,6 +11,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { firebaseService } from "../services/firebaseService";
 import { Spacing, BorderRadius } from "../constants/theme";
+import i18n from "@/lib/i18n";
 
 export default function CartScreen() {
   const { theme } = useTheme();
