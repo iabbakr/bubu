@@ -10,6 +10,15 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { LocationSelector } from "../components/LocationSelector";
 import { Location } from "../types/location";
+import { useNavigation } from "@react-navigation/native";
+import { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
+type AuthScreenNavigationProp = NativeStackNavigationProp<
+  ProfileStackParamList,
+  "Auth"
+>;
+
 
 type TermsModalProps = {
   visible: boolean;
@@ -51,6 +60,8 @@ const TermsModal = ({ visible, onClose }: TermsModalProps) => {
 export default function AuthScreen() {
   const { theme } = useTheme();
   const { signIn, signUp } = useAuth();
+  const navigation = useNavigation<AuthScreenNavigationProp>();
+
 
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState("");
@@ -69,6 +80,7 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showTermsModal, setShowTermsModal] = useState(false);
+  
 
   const handleSubmit = async () => {
     setError("");
@@ -310,11 +322,14 @@ export default function AuthScreen() {
           {/* FORGOT PASSWORD */}
           {!isSignUp && (
             <Pressable
-              onPress={() => console.log("Forgot Password pressed")}
-              style={{ alignSelf: "flex-end", marginBottom: Spacing.md, marginTop: -Spacing.xs }}
-            >
-              <Text style={{ color: theme.primary, fontWeight: "600" }}>Forgot Password?</Text>
-            </Pressable>
+  onPress={() => navigation.navigate("ForgotPassword")}
+  style={{ alignSelf: "flex-end", marginBottom: Spacing.md, marginTop: -Spacing.xs }}
+>
+  <Text style={{ color: theme.primary, fontWeight: "600" }}>
+    Forgot Password?
+  </Text>
+</Pressable>
+
           )}
 
           {/* CONFIRM PASSWORD */}

@@ -9,12 +9,12 @@ import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { firebaseService } from "../services/firebaseService";
-import * as Clipboard from 'expo-clipboard';
-import { soundManager } from '../lib/soundManager';
+import { useNavigation } from "@react-navigation/native";
 
 export default function AccountInfoScreen() {
   const { theme } = useTheme();
   const { user, updateUser } = useAuth();
+  const navigation = useNavigation();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
@@ -133,45 +133,46 @@ export default function AccountInfoScreen() {
                 keyboardType="phone-pad"
               />
               {renderInfoRow("mail", "Email", email)}
-              {renderInfoRow("gift", "Referral Code", user.referralCode || "Not provided")}
+              {renderInfoRow("gift", "Referral Code", user.myReferralCode || "Not provided")}
+              
               {user.referralBonus && user.referralBonus > 0 && (
-  <View style={[styles.infoRow, { backgroundColor: theme.primary + "10", borderColor: theme.primary }]}>
-    <View style={styles.infoLeft}>
-      <View style={[styles.iconContainer, { backgroundColor: theme.primary + "20" }]}>
-        <Feather name="award" size={20} color={theme.primary} />
-      </View>
-      <View style={styles.infoContent}>
-        <ThemedText type="label" style={{ color: theme.textSecondary, fontSize: 12 }}>
-          Total Referral Earnings
-        </ThemedText>
-        <ThemedText style={{ marginTop: Spacing.xs, fontWeight: "700", color: theme.primary }}>
-          ₦{user.referralBonus.toFixed(2)}
-        </ThemedText>
-        <ThemedText type="caption" style={{ marginTop: 2, color: theme.textSecondary }}>
-          From {Math.floor(user.referralBonus / 500)} successful referrals
-        </ThemedText>
-      </View>
-    </View>
-  </View>
-)}
+                <View style={[styles.infoRow, { backgroundColor: theme.primary + "10", borderColor: theme.primary }]}>
+                  <View style={styles.infoLeft}>
+                    <View style={[styles.iconContainer, { backgroundColor: theme.primary + "20" }]}>
+                      <Feather name="award" size={20} color={theme.primary} />
+                    </View>
+                    <View style={styles.infoContent}>
+                      <ThemedText type="label" style={{ color: theme.textSecondary, fontSize: 12 }}>
+                        Total Referral Earnings
+                      </ThemedText>
+                      <ThemedText style={{ marginTop: Spacing.xs, fontWeight: "700", color: theme.primary }}>
+                        ₦{user.referralBonus.toFixed(2)}
+                      </ThemedText>
+                      <ThemedText type="caption" style={{ marginTop: 2, color: theme.textSecondary }}>
+                        From {Math.floor(user.referralBonus / 500)} successful referrals
+                      </ThemedText>
+                    </View>
+                  </View>
+                </View>
+              )}
 
-{user.referredBy && !user.hasCompletedFirstPurchase && (
-  <View style={[styles.infoRow, { backgroundColor: theme.warning + "10", borderColor: theme.warning }]}>
-    <View style={styles.infoLeft}>
-      <View style={[styles.iconContainer, { backgroundColor: theme.warning + "20" }]}>
-        <Feather name="info" size={20} color={theme.warning} />
-      </View>
-      <View style={styles.infoContent}>
-        <ThemedText type="label" style={{ color: theme.warning, fontSize: 12 }}>
-          Complete Your First Purchase
-        </ThemedText>
-        <ThemedText type="caption" style={{ marginTop: 2 }}>
-          Make your first purchase to unlock your referrer's bonus!
-        </ThemedText>
-      </View>
-    </View>
-  </View>
-)}
+              {user.referredBy && !user.hasCompletedFirstPurchase && (
+                <View style={[styles.infoRow, { backgroundColor: theme.warning + "10", borderColor: theme.warning }]}>
+                  <View style={styles.infoLeft}>
+                    <View style={[styles.iconContainer, { backgroundColor: theme.warning + "20" }]}>
+                      <Feather name="info" size={20} color={theme.warning} />
+                    </View>
+                    <View style={styles.infoContent}>
+                      <ThemedText type="label" style={{ color: theme.warning, fontSize: 12 }}>
+                        Complete Your First Purchase
+                      </ThemedText>
+                      <ThemedText type="caption" style={{ marginTop: 2 }}>
+                        Make your first purchase to unlock your referrer's bonus!
+                      </ThemedText>
+                    </View>
+                  </View>
+                </View>
+              )}
 
               {user.role === "seller" && renderInfoRow("briefcase", "Seller Category", user.sellerCategory || "Not specified")}
 
@@ -239,7 +240,7 @@ export default function AccountInfoScreen() {
           
           <Pressable
             style={[styles.securityButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
-            onPress={() => Alert.alert("Change Password", "Password change feature coming soon")}
+            onPress={() => navigation.navigate("ChangePassword" as never)}
           >
             <View style={styles.infoLeft}>
               <View style={[styles.iconContainer, { backgroundColor: theme.primary + "20" }]}>
@@ -263,40 +264,6 @@ export default function AccountInfoScreen() {
             <Feather name="chevron-right" size={20} color={theme.textSecondary} />
           </Pressable>
         </View>
-
-        {/* Danger Zone 
-        <View style={styles.section}>
-          <ThemedText type="h3" style={{ marginBottom: Spacing.lg, color: "#ef4444" }}>
-            Danger Zone
-          </ThemedText>
-          
-          <Pressable
-            style={[styles.dangerButton, { borderColor: "#ef4444" }]}
-            onPress={() => {
-              Alert.alert(
-                "Delete Account",
-                "Are you sure you want to delete your account? This action cannot be undone.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () => {
-                      Alert.alert("Feature Coming Soon", "Account deletion will be available soon");
-                    },
-                  },
-                ]
-              );
-            }}
-          >
-            <Feather name="trash-2" size={20} color="#ef4444" />
-            <ThemedText style={{ marginLeft: Spacing.md, color: "#ef4444" }}>
-              Delete Account
-            </ThemedText>
-          </Pressable>
-          
-        </View>
-        */}
       </View>
     </ScreenScrollView>
   );
@@ -385,13 +352,5 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     marginBottom: Spacing.sm,
-  },
-  dangerButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    justifyContent: "center",
   },
 });

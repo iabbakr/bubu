@@ -8,6 +8,8 @@ import {
   Alert,
   ScrollView,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
@@ -203,7 +205,8 @@ export default function AddProductScreen() {
                 onPress={pickImage}
                 style={[
                   styles.imageSlot,
-                  images[index] && styles.imageSlotFilled,
+                  { borderColor: theme.border },
+                  images[index] && { borderColor: theme.primary, borderStyle: "solid" },
                 ]}
               >
                 {images[index] ? (
@@ -236,12 +239,18 @@ export default function AddProductScreen() {
 
           {/* Form Fields */}
           <ThemedText type="h4" style={styles.sectionTitle}>Basic Info</ThemedText>
-          <TextInput placeholder="Product Name *" value={name} onChangeText={setName} style={styles.input} placeholderTextColor={theme.textSecondary} />
+          <TextInput 
+            placeholder="Product Name *" 
+            value={name} 
+            onChangeText={setName} 
+            style={[styles.input, { backgroundColor: theme.cardBackground, borderColor: theme.border, color: theme.text }]} 
+            placeholderTextColor={theme.textSecondary} 
+          />
           <TextInput
             placeholder="Description *"
             value={description}
             onChangeText={setDescription}
-            style={[styles.input, styles.multiline]}
+            style={[styles.input, styles.multiline, { backgroundColor: theme.cardBackground, borderColor: theme.border, color: theme.text }]}
             placeholderTextColor={theme.textSecondary}
             multiline
             numberOfLines={3}
@@ -251,9 +260,9 @@ export default function AddProductScreen() {
             <TextInput
               placeholder="Price (₦) *"
               value={price}
-              onChangeText={(t) => setPrice(t.replace(/[^0-9]/g, ""))}
+              onChangeText={(t) => setPrice(t.replace(/[^0-9.]/g, ""))}
               keyboardType="numeric"
-              style={[styles.input, styles.halfInput]}
+              style={[styles.input, styles.halfInput, { backgroundColor: theme.cardBackground, borderColor: theme.border, color: theme.text }]}
               placeholderTextColor={theme.textSecondary}
             />
             <TextInput
@@ -261,29 +270,47 @@ export default function AddProductScreen() {
               value={stock}
               onChangeText={(t) => setStock(t.replace(/[^0-9]/g, ""))}
               keyboardType="numeric"
-              style={[styles.input, styles.halfInput]}
+              style={[styles.input, styles.halfInput, { backgroundColor: theme.cardBackground, borderColor: theme.border, color: theme.text }]}
               placeholderTextColor={theme.textSecondary}
             />
           </View>
 
           <ThemedText type="h4" style={styles.sectionTitle}>Details</ThemedText>
-          <TextInput placeholder="Brand" value={brand} onChangeText={setBrand} style={styles.input} placeholderTextColor={theme.textSecondary} />
-          <TextInput placeholder="Size / Weight" value={weight} onChangeText={setWeight} style={styles.input} placeholderTextColor={theme.textSecondary} />
+          <TextInput 
+            placeholder="Brand" 
+            value={brand} 
+            onChangeText={setBrand} 
+            style={[styles.input, { backgroundColor: theme.cardBackground, borderColor: theme.border, color: theme.text }]} 
+            placeholderTextColor={theme.textSecondary} 
+          />
+          <TextInput 
+            placeholder="Size / Weight" 
+            value={weight} 
+            onChangeText={setWeight} 
+            style={[styles.input, { backgroundColor: theme.cardBackground, borderColor: theme.border, color: theme.text }]} 
+            placeholderTextColor={theme.textSecondary} 
+          />
           <TextInput
             placeholder="Discount % (optional)"
             value={discount}
             onChangeText={(t) => setDiscount(t.replace(/[^0-9]/g, ""))}
             keyboardType="numeric"
-            style={styles.input}
+            style={[styles.input, { backgroundColor: theme.cardBackground, borderColor: theme.border, color: theme.text }]}
             placeholderTextColor={theme.textSecondary}
           />
 
           {isPharmacy && (
             <>
-              <TextInput placeholder="Expiry Date (YYYY-MM-DD)" value={expiryDate} onChangeText={setExpiryDate} style={styles.input} placeholderTextColor={theme.textSecondary} />
+              <TextInput 
+                placeholder="Expiry Date (YYYY-MM-DD)" 
+                value={expiryDate} 
+                onChangeText={setExpiryDate} 
+                style={[styles.input, { backgroundColor: theme.cardBackground, borderColor: theme.border, color: theme.text }]} 
+                placeholderTextColor={theme.textSecondary} 
+              />
               <View style={styles.checkboxRow}>
                 <Pressable
-                  style={[styles.checkbox, requiresPrescription && styles.checkboxChecked]}
+                  style={[styles.checkbox, { borderColor: theme.primary }, requiresPrescription && { backgroundColor: theme.primary }]}
                   onPress={() => setRequiresPrescription(!requiresPrescription)}
                 >
                   {requiresPrescription && <Feather name="check" size={18} color="#fff" />}
@@ -294,7 +321,16 @@ export default function AddProductScreen() {
           )}
 
           <ThemedText type="h4" style={styles.sectionTitle}>Category</ThemedText>
-          <Pressable style={[styles.subcategoryBtn, { backgroundColor: subcategory ? theme.primary + "20" : theme.cardBackground }]} onPress={openPicker}>
+          <Pressable 
+            style={[
+              styles.subcategoryBtn, 
+              { 
+                backgroundColor: subcategory ? theme.primary + "20" : theme.cardBackground,
+                borderColor: subcategory ? theme.primary : theme.border
+              }
+            ]} 
+            onPress={openPicker}
+          >
             <ThemedText style={{ color: subcategory ? theme.primary : theme.textSecondary, fontWeight: "600" }}>
               {subcategory || "Select subcategory..."}
             </ThemedText>
@@ -303,11 +339,15 @@ export default function AddProductScreen() {
 
           <Modal visible={pickerVisible} transparent animationType="fade">
             <Pressable style={styles.modalOverlay} onPress={() => setPickerVisible(false)}>
-              <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+              <View style={[styles.modalContent, { backgroundColor: theme.background }]} onStartShouldSetResponder={() => true}>
                 <ThemedText type="h3" style={{ marginBottom: 16, textAlign: "center" }}>Select Subcategory</ThemedText>
-                <ScrollView>
+                <ScrollView showsVerticalScrollIndicator={false}>
                   {subcategories[user?.sellerCategory || "supermarket"].map((cat) => (
-                    <Pressable key={cat} style={styles.modalItem} onPress={() => selectSubcategory(cat)}>
+                    <Pressable 
+                      key={cat} 
+                      style={[styles.modalItem, { borderBottomColor: theme.border }]} 
+                      onPress={() => selectSubcategory(cat)}
+                    >
                       <ThemedText style={{ fontSize: 16, paddingVertical: 12 }}>{cat}</ThemedText>
                     </Pressable>
                   ))}
@@ -325,68 +365,106 @@ export default function AddProductScreen() {
         </View>
       </ScreenScrollView>
 
-      {/* FIXED BUSINESS PROFILE MODAL */}
-      <Modal visible={showBusinessModal} transparent animationType="slide" onRequestClose={() => {}}>
-        <View style={styles.businessModalOverlay}>
-          <Pressable
-            style={{ flex: 1, width: "100%" }}
-            onPress={() => {
-              Alert.alert(
-                "Complete Profile Required",
-                "You must complete your business profile to add products.",
-                [{ text: "OK" }]
-              );
-            }}
-          >
-            <View style={[styles.businessModalContent, { backgroundColor: theme.background }]}>
-              {/* Header with Close Button */}
-              <View style={styles.businessModalHeader}>
-                <Pressable
-                  onPress={() => {
-                    Alert.alert(
-                      "Go Back?",
-                      "You won't be able to add products until you complete your business profile.",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Go Back",
-                          style: "destructive",
-                          onPress: () => {
-                            setShowBusinessModal(false);
-                            navigation.goBack();
-                          },
-                        },
-                      ]
-                    );
-                  }}
-                  style={{ position: "absolute", left: 8, top: 8, zIndex: 10 }}
-                >
-                  <Feather name="x" size={28} color={theme.text} />
-                </Pressable>
+      {/* BUSINESS PROFILE MODAL - IMPROVED */}
+      <Modal 
+        visible={showBusinessModal} 
+        transparent 
+        animationType="slide" 
+        onRequestClose={() => {}}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.businessModalOverlay}
+        >
+          <View style={[styles.businessModalContent, { backgroundColor: theme.background }]}>
+            {/* Close Button */}
+            <Pressable
+              onPress={() => {
+                Alert.alert(
+                  "Go Back?",
+                  "You won't be able to add products until you complete your business profile.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Go Back",
+                      style: "destructive",
+                      onPress: () => {
+                        setShowBusinessModal(false);
+                        navigation.goBack();
+                      },
+                    },
+                  ]
+                );
+              }}
+              style={styles.closeButton}
+            >
+              <Feather name="x" size={24} color={theme.text} />
+            </Pressable>
 
-                <Feather name="briefcase" size={44} color={theme.primary} />
-                <ThemedText type="h2" style={{ marginTop: Spacing.md, textAlign: "center" }}>
-                  Complete Business Profile
-                </ThemedText>
-                <ThemedText type="body" style={{ color: theme.textSecondary, textAlign: "center", marginTop: Spacing.sm, paddingHorizontal: 20 }}>
-                  This information helps buyers trust your store
-                </ThemedText>
+            {/* Header */}
+            <View style={[styles.businessModalHeader, { borderBottomColor: theme.border }]}>
+              <View style={[styles.iconCircle, { backgroundColor: theme.primary + "20" }]}>
+                <Feather name="briefcase" size={32} color={theme.primary} />
               </View>
+              <ThemedText type="h2" style={{ marginTop: Spacing.md, textAlign: "center" }}>
+                Complete Business Profile
+              </ThemedText>
+              <ThemedText 
+                type="caption" 
+                style={{ 
+                  color: theme.textSecondary, 
+                  textAlign: "center", 
+                  marginTop: Spacing.xs,
+                  paddingHorizontal: Spacing.md 
+                }}
+              >
+                This information helps buyers trust your store
+              </ThemedText>
+            </View>
 
-              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                <ThemedText type="h4" style={styles.businessLabel}>Business Name *</ThemedText>
+            {/* Form */}
+            <ScrollView 
+              style={styles.businessForm}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: Spacing.xl }}
+            >
+              <View style={styles.inputGroup}>
+                <ThemedText type="label" style={styles.businessLabel}>
+                  Business Name *
+                </ThemedText>
                 <TextInput
-                  style={[styles.input, { backgroundColor: theme.backgroundSecondary }]}
+                  style={[
+                    styles.input, 
+                    styles.businessInput,
+                    { 
+                      backgroundColor: theme.cardBackground,
+                      borderColor: theme.border,
+                      color: theme.text
+                    }
+                  ]}
                   placeholder="e.g. Mama Gold Pharmacy, Shoprite Ikeja"
                   placeholderTextColor={theme.textSecondary}
                   value={businessName}
                   onChangeText={setBusinessName}
-                  autoFocus
                 />
+              </View>
 
-                <ThemedText type="h4" style={styles.businessLabel}>Business Address *</ThemedText>
+              <View style={styles.inputGroup}>
+                <ThemedText type="label" style={styles.businessLabel}>
+                  Business Address *
+                </ThemedText>
                 <TextInput
-                  style={[styles.input, styles.multiline, { backgroundColor: theme.backgroundSecondary }]}
+                  style={[
+                    styles.input, 
+                    styles.multiline, 
+                    styles.businessInput,
+                    { 
+                      backgroundColor: theme.cardBackground,
+                      borderColor: theme.border,
+                      color: theme.text,
+                      minHeight: 100
+                    }
+                  ]}
                   placeholder="e.g. 123 Oba Akran Ave, beside GTBank, Ikeja, Lagos"
                   placeholderTextColor={theme.textSecondary}
                   value={businessAddress}
@@ -394,29 +472,39 @@ export default function AddProductScreen() {
                   multiline
                   numberOfLines={4}
                 />
+              </View>
 
-              
-
-                <ThemedText type="h4" style={styles.businessLabel}>Business Phone *</ThemedText>
+              <View style={styles.inputGroup}>
+                <ThemedText type="label" style={styles.businessLabel}>
+                  Business Phone *
+                </ThemedText>
                 <TextInput
-                  style={[styles.input, { backgroundColor: theme.backgroundSecondary }]}
+                  style={[
+                    styles.input, 
+                    styles.businessInput,
+                    { 
+                      backgroundColor: theme.cardBackground,
+                      borderColor: theme.border,
+                      color: theme.text
+                    }
+                  ]}
                   placeholder="e.g. 08012345678"
                   placeholderTextColor={theme.textSecondary}
                   value={businessPhone}
                   onChangeText={setBusinessPhone}
                   keyboardType="phone-pad"
                 />
+              </View>
 
-                <PrimaryButton
-                  title={savingBusinessProfile ? "Saving..." : "Save & Continue"}
-                  onPress={handleSaveBusinessProfile}
-                  disabled={savingBusinessProfile}
-                  style={{ marginVertical: Spacing.xl }}
-                />
-              </ScrollView>
-            </View>
-          </Pressable>
-        </View>
+              <PrimaryButton
+                title={savingBusinessProfile ? "Saving..." : "Save & Continue"}
+                onPress={handleSaveBusinessProfile}
+                disabled={savingBusinessProfile}
+                style={{ marginTop: Spacing.lg }}
+              />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -432,19 +520,17 @@ const styles = StyleSheet.create({
     height: 110,
     borderRadius: BorderRadius.lg,
     borderWidth: 2,
-    borderColor: "#ddd",
     borderStyle: "dashed",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
   },
-  imageSlotFilled: { borderStyle: "solid", borderColor: "#007AFF" },
   imagePreview: { width: "100%", height: "100%" },
   removeBtn: {
     position: "absolute",
     top: 6,
     right: 6,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     borderRadius: 16,
     width: 32,
     height: 32,
@@ -454,12 +540,16 @@ const styles = StyleSheet.create({
   placeholder: { alignItems: "center" },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     marginBottom: Spacing.md,
+    fontSize: 16,
   },
-  multiline: { height: 100, textAlignVertical: "top" },
+  multiline: { 
+    height: 100, 
+    textAlignVertical: "top",
+    paddingTop: Spacing.md,
+  },
   row: { flexDirection: "row", gap: Spacing.md },
   halfInput: { flex: 1 },
   checkboxRow: { flexDirection: "row", alignItems: "center", marginBottom: Spacing.lg },
@@ -468,12 +558,10 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: "#007AFF",
     justifyContent: "center",
     alignItems: "center",
     marginRight: Spacing.md,
   },
-  checkboxChecked: { backgroundColor: "#007AFF" },
   checkboxLabel: { fontSize: 16 },
   subcategoryBtn: {
     flexDirection: "row",
@@ -482,50 +570,85 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: "#ddd",
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
+    padding: Spacing.lg,
   },
   modalContent: {
     width: "90%",
+    maxWidth: 400,
     maxHeight: "70%",
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.xl,
     padding: Spacing.xl,
     elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
-  modalItem: { paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: "#eee" },
+  modalItem: { 
+    paddingVertical: Spacing.md, 
+    borderBottomWidth: 1,
+  },
+  
+  // Business Modal Styles
   businessModalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: Spacing.lg,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "flex-end",
   },
   businessModalContent: {
     width: "100%",
-    maxWidth: 500,
-    height: "85%",
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.xl,
+    maxHeight: "90%",
+    borderTopLeftRadius: BorderRadius["2xl"],
+    borderTopRightRadius: BorderRadius["2xl"],
+    paddingTop: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
     elevation: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  closeButton: {
+    position: "absolute",
+    right: Spacing.lg,
+    top: Spacing.lg,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
   businessModalHeader: {
     alignItems: "center",
     paddingBottom: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e5e5",
     marginBottom: Spacing.lg,
-    position: "relative",
+    borderBottomWidth: 1,
+  },
+  iconCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    justifyContent: "center",
+    alignItems: "center",
   },
   businessForm: {
     flex: 1,
   },
+  inputGroup: {
+    marginBottom: Spacing.md,
+  },
   businessLabel: {
     marginBottom: Spacing.sm,
     fontWeight: "600",
+  },
+  businessInput: {
+    marginBottom: 0,
   },
 });

@@ -11,6 +11,8 @@ import WalletScreen from "@/screens/WalletScreen";
 import SellerDashboardScreen from "@/screens/SellerDashboardScreen";
 import AdminPanelScreen from "@/screens/AdminPanelScreen";
 import AddProductScreen from "@/screens/AddProductScreen";
+import ChangePasswordScreen from "@/screens/ChangePasswordScreen";
+import ForgotPasswordScreen from "@/screens/ForgotPasswordScreen";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { getCommonScreenOptions } from "@/navigation/screenOptions";
@@ -50,7 +52,8 @@ export type ProfileStackParamList = {
   HelpCenter: undefined;
   Language: undefined;
   Cart: undefined;
-
+  ChangePassword: undefined;
+  ForgotPassword: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -68,22 +71,22 @@ export default function ProfileStackNavigator() {
             name="Profile"
             component={ProfileScreen}
             options={({ navigation }) => ({
-            title: i18n.t("profile"),
-            headerRight: () => (
-              <Pressable
-                onPress={() => {
-                if (user.role === "admin") {
-                navigation.navigate("AdminSupportDashboard");
-                } else {
-                navigation.navigate("SupportChat");
-                }
-            }}
-          >
-        <Feather name="headphones" size={24} style={{margin:5}}color={theme.primary} />
-      </Pressable>
-    ),
-  })}
-/>
+              title: i18n.t("profile"),
+              headerRight: () => (
+                <Pressable
+                  onPress={() => {
+                    if (user.role === "admin") {
+                      navigation.navigate("AdminSupportDashboard");
+                    } else {
+                      navigation.navigate("SupportChat");
+                    }
+                  }}
+                >
+                  <Feather name="headphones" size={24} style={{margin:5}} color={theme.primary} />
+                </Pressable>
+              ),
+            })}
+          />
 
           <Stack.Screen
             name="AccountInfo"
@@ -93,6 +96,16 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
+          <Stack.Screen
+            name="ChangePassword"
+            component={ChangePasswordScreen}
+            options={{
+              title: "Change Password",
+              headerBackTitle: "Back",
+            }}
+          />
+
           <Stack.Screen
             name="Wallet"
             component={WalletScreen}
@@ -101,6 +114,7 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
           <Stack.Screen
             name="SellerDashboard"
             component={SellerDashboardScreen}
@@ -109,6 +123,7 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
           <Stack.Screen
             name="AdminPanel"
             component={AdminPanelScreen}
@@ -117,6 +132,7 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
           <Stack.Screen
             name="AdminDispute"
             component={AdminDisputesScreen}
@@ -180,6 +196,7 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
           <Stack.Screen
             name="EditProduct"
             component={EditProductScreen}
@@ -188,11 +205,13 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
           <Stack.Screen
             name="NotificationSetting"
             component={NotificationSettingsScreen}
             options={{ title: "Notification Settings", headerBackTitle: "Back" }}
           />
+
           <Stack.Screen
             name="MyOrders"
             component={MyOrdersScreen}
@@ -201,11 +220,13 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
           <Stack.Screen
             name="Theme"
             component={ThemeSettingsScreen}
             options={{ title: "Theme Settings", headerBackTitle: "Back" }}
           />
+
           <Stack.Screen
             name="MyProducts"
             component={MyProductsScreen}
@@ -214,6 +235,7 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
           <Stack.Screen
             name="Language"
             component={LanguageScreen}
@@ -224,14 +246,25 @@ export default function ProfileStackNavigator() {
           />
         </>
       ) : (
-        <Stack.Screen
-          name="Auth"
-          component={AuthScreen}
-          options={{
-            title: "Sign In",
-            headerShown: false,
-          }}
-        />
+        <>
+          <Stack.Screen
+            name="Auth"
+            component={AuthScreen}
+            options={{
+              title: "Sign In",
+              headerShown: false,
+            }}
+          />
+          
+          <Stack.Screen
+            name="ForgotPassword"
+            component={ForgotPasswordScreen}
+            options={{
+              title: "Forgot Password",
+              headerBackTitle: "Back",
+            }}
+          />
+        </>
       )}
     </Stack.Navigator>
   );
