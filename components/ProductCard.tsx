@@ -4,6 +4,7 @@ import { Product } from "../services/firebaseService";
 import { ThemedText } from "./ThemedText";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
+import { soundManager } from '../lib/soundManager';
 
 interface ProductCardProps {
   product: Product;
@@ -35,7 +36,7 @@ export function ProductCard({
 
   const isUnavailable = product.stock === 0 || isExpired;
 
-  // ==================== LIST VIEW ====================
+  // ================= LIST VIEW =================
   if (viewMode === "list") {
     return (
       <Pressable
@@ -82,47 +83,45 @@ export function ProductCard({
 
         <View style={styles.listContent}>
           <View style={styles.roww}>
-          <View>
-          {product.brand && (
-            <ThemedText
-              type="caption"
-              style={{ color: theme.primary, marginBottom: 4 }}
-            >
-              {product.brand}
-            </ThemedText>
-          )}
-          </View>
-          <View>
-          {/* AREA SHOWN IN LIST VIEW */}
-          {product.location.area && (
-            <ThemedText
-              type="caption"
-              style={{
-                color: theme.textSecondary,
-                marginBottom: 6,
-                fontSize: 11,
-              }}
-              numberOfLines={1}
-            >
-              {product.location.city}
-    {product.location.area ? `, ${product.location.area}` : ""}
-              
-            </ThemedText>
-          )}
-           </View>
+            <View>
+              {product.brand && (
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.primary, marginBottom: 4 }}
+                  numberOfLines={1}
+                >
+                  {product.brand}
+                </ThemedText>
+              )}
+            </View>
+
+            <View>
+              {product.location.area && (
+                <ThemedText
+                  type="caption"
+                  style={{
+                    color: theme.textSecondary,
+                    marginBottom: 6,
+                    fontSize: 11,
+                  }}
+                  numberOfLines={1}
+                >
+                  {product.location.city}
+                  {product.location.area ? `, ${product.location.area}` : ""}
+                </ThemedText>
+              )}
+            </View>
           </View>
 
           <ThemedText type="h4" numberOfLines={2} style={{ marginBottom: 8 }}>
             {product.name}
           </ThemedText>
-         
-
-          
 
           {product.subcategory && (
             <ThemedText
               type="caption"
               style={{ color: theme.textSecondary, marginBottom: 8 }}
+              numberOfLines={1}
             >
               {product.subcategory}
             </ThemedText>
@@ -157,9 +156,13 @@ export function ProductCard({
                       : theme.primary,
                   },
                 ]}
-                onPress={(e) => {
+                onPress={ async (e) => {
                   e.stopPropagation();
-                  if (!isUnavailable) onAddToCart();
+                  if (!isUnavailable) {
+                    onAddToCart();
+                    // ✅ Play add to cart sound
+                    await soundManager.play('addToCart'); 
+                  }
                 }}
                 disabled={isUnavailable}
               >
@@ -176,7 +179,7 @@ export function ProductCard({
     );
   }
 
-  // ==================== GRID VIEW (220px height) ====================
+  // ================= GRID VIEW =================
   return (
     <Pressable
       style={({ pressed }) => [
@@ -189,7 +192,7 @@ export function ProductCard({
       ]}
       onPress={onPress}
     >
-      {/* Image Section */}
+      {/* IMAGE */}
       <View style={styles.imageSection}>
         <Image
           source={{
@@ -218,48 +221,48 @@ export function ProductCard({
         )}
       </View>
 
-      {/* Content Section */}
+      {/* CONTENT */}
       <View style={styles.contentSection}>
         <View style={styles.roww}>
-          <View>
-        {(product.brand || product.weight) && (
-          <ThemedText
-            type="caption"
-            style={{ color: theme.primary, marginBottom: 4 }}
-          >
-            {product.brand} {product.weight ? `• ${product.weight}` : ""}
-          </ThemedText>
-          
-        )}
+          <View style={{ flexShrink: 1 }}>
+            {(product.brand || product.weight) && (
+              <ThemedText
+                type="caption"
+                style={{ color: theme.primary, marginBottom: 4 }}
+                numberOfLines={1}
+              >
+                {product.brand} {product.weight ? `• ${product.weight}` : ""}
+              </ThemedText>
+            )}
+          </View>
+
+          <View style={{ flexShrink: 0 }}>
+  {product.location.area && (
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <Feather name="map-pin" size={11} color={theme.textSecondary} />
+      <ThemedText
+        type="caption"
+        style={{
+          color: theme.textSecondary,
+          marginLeft: 4,
+          fontSize: 10,
+        }}
+        numberOfLines={1}
+      >
+        {product.location.area}
+      </ThemedText>
+    </View>
+  )}
+</View>
         </View>
-        <View> {/* AREA SHOWN IN GRID VIEW */}
-        {product.location.area && (
-          <ThemedText
-            type="caption"
-            style={{
-              color: theme.textSecondary,
-              marginBottom: 2,
-              fontSize: 10,
-            }}
-            numberOfLines={1}
-          >
-            <Feather name="map-pin" size={11} color={theme.textSecondary} />
-            {" "}
 
-            {product.location.city}
-    {product.location.area ? `, ${product.location.area}` : ""}
-          </ThemedText>
-        )}</View>
-        
-        </View>
-        
-
-
-        <ThemedText type="h4" numberOfLines={2} style={styles.productName}>
+        <ThemedText
+          type="h4"
+          numberOfLines={2}
+          style={styles.productName}
+        >
           {product.name}
         </ThemedText>
-
-       
 
         <View style={styles.priceRow}>
           <ThemedText
@@ -273,6 +276,7 @@ export function ProductCard({
             <ThemedText
               type="caption"
               style={[styles.strike, { color: theme.textSecondary }]}
+              numberOfLines={1}
             >
               ₦{Math.round(product.price).toLocaleString()}
             </ThemedText>
@@ -284,22 +288,18 @@ export function ProductCard({
             <Feather
               name="package"
               size={14}
-              color={
-                product.stock > 0 ? theme.success : theme.error
-              }
+              color={product.stock > 0 ? theme.success : theme.error}
             />
             <ThemedText
               type="caption"
               style={{
                 marginLeft: 4,
-                color:
-                  product.stock > 0 ? theme.success : theme.error,
+                color: product.stock > 0 ? theme.success : theme.error,
                 fontSize: 12,
               }}
+              numberOfLines={1}
             >
-              {product.stock > 0
-                ? `${product.stock} left`
-                : "Unavailable"}
+              {product.stock > 0 ? `${product.stock} left` : "Unavailable"}
             </ThemedText>
           </View>
 
@@ -313,9 +313,12 @@ export function ProductCard({
                     : theme.primary,
                 },
               ]}
-              onPress={(e) => {
+              onPress={ async (e) => {
                 e.stopPropagation();
-                if (!isUnavailable) onAddToCart();
+                if (!isUnavailable) {
+                  onAddToCart();
+                  await soundManager.play('addToCart');
+                }
               }}
               disabled={isUnavailable}
             >
@@ -332,8 +335,9 @@ export function ProductCard({
   );
 }
 
+// ================= STYLES =================
+
 const styles = StyleSheet.create({
-  // GRID
   gridContainer: {
     height: 210,
     width: "100%",
@@ -394,23 +398,29 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  // **UPDATED**: Prevent content from expanding height
   contentSection: {
-    height: "35%",
+    height: "45%",
     paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.xs,
     justifyContent: "space-between",
+    minHeight: 80,
+    maxHeight: 90,
   },
 
   productName: {
     fontWeight: "600",
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: 12.3,
+    lineHeight: 16,
     marginBottom: 2,
+    flexShrink: 1,
   },
-  roww:{
+
+  roww: {
     flexDirection: "row",
     justifyContent: "space-between",
-
+    alignItems: "flex-start",
+    width: "100%",
   },
 
   priceRow: {
@@ -438,22 +448,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // LIST
   listContainer: {
     flexDirection: "row",
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    height: 110 ,
+    height: 110,
     marginBottom: Spacing.md,
     overflow: "hidden",
-    ...Platform.select({
-      ios: { shadowOpacity: 0.05, shadowRadius: 4 },
-      android: { elevation: 2 },
-    }),
   },
 
-  listImageWrapper: { position: "relative", width: 120, height: "100%" },
-  listImage: { width: "100%", height: "100%" },
+  listImageWrapper: {
+    position: "relative",
+    width: 120,
+    height: "100%",
+  },
+
+  listImage: {
+    width: "100%",
+    height: "100%",
+  },
 
   listDiscountBadge: {
     position: "absolute",
@@ -484,7 +497,6 @@ const styles = StyleSheet.create({
   },
 
   listContent: {
-    
     flex: 1,
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.sm,

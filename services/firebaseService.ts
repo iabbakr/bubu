@@ -20,7 +20,28 @@ import {
 } from "firebase/firestore";
 import { soundManager } from '../lib/soundManager';
 import { emailService } from "../lib/resend";
-export type UserRole = "admin" | "seller" | "buyer";
+
+
+export type UserRole = 
+  | "admin" 
+  | "seller" 
+  | "buyer"
+  | "state_manager_1"
+  | "state_manager_2"
+  | "support_agent"
+  | "professional";
+
+export type ProfessionalType = 
+  | "doctor" 
+  | "pharmacist" 
+  | "dentist" 
+  | "lawyer";
+
+export interface Location {
+  state: string;
+  city: string;
+  area: string;
+}
 
 export interface Location {
   state: string;
@@ -47,6 +68,20 @@ export interface User {
   hasCompletedBusinessProfile?: boolean;
   createdAt: number;
   referralBonus?: number;
+  assignedState?: string;              // For state managers
+  managerLevel?: 1 | 2;               // Manager level (I or II)
+  professionalType?: ProfessionalType; // For professionals
+  professionalLicense?: string;        // Professional license number
+  specialization?: string;             // For doctors/dentists
+  yearsOfExperience?: number;         // For professionals
+  consultationFee?: number;           // For professionals
+  availability?: string[];            // Available days for professionals
+  isVerified?: boolean;               // Verification status for professionals
+  isActive?: boolean;                 // Account active status
+  assignedBy?: string;                // UID of admin who assigned role
+  assignedAt?: number;                // Timestamp of role assignment
+  permissions?: string[];             // Specific permissions array
+
 }
 
 export interface Product {
@@ -230,7 +265,9 @@ export const firebaseService = {
             transactions,
           });
 
-          // Don't update referralBonus yet - wait for first purchase
+          await soundManager.play('deposit');
+
+          
         }
       }
     }
@@ -300,42 +337,48 @@ export const firebaseService = {
   },
 
   async addMoneyToWallet(userId: string, amount: number, reference: string): Promise<void> {
-    const wallet = await this.getWallet(userId);
+  const wallet = await this.getWallet(userId);
 
-    const transaction: Transaction = {
-      id: Date.now().toString(),
-      type: "credit",
-      amount,
-      description: `Deposit via Paystack - Ref: ${reference}`,
-      timestamp: Date.now(),
-    };
+  const transaction: Transaction = {
+    id: Date.now().toString(),
+    type: "credit",
+    amount,
+    description: `Deposit via Paystack - Ref: ${reference}`,
+    timestamp: Date.now(),
+  };
 
-    wallet.balance += amount;
-    wallet.transactions.unshift(transaction);
+  wallet.balance += amount;
+  wallet.transactions.unshift(transaction);
 
-    await this.updateWallet(wallet);
-  },
+  await this.updateWallet(wallet);
+  
+  // ✅ Play deposit sound
+  await soundManager.play('deposit');
+},
 
   async withdrawFromWallet(userId: string, amount: number): Promise<void> {
-    const wallet = await this.getWallet(userId);
+  const wallet = await this.getWallet(userId);
 
-    if (wallet.balance < amount) {
-      throw new Error("Insufficient balance");
-    }
+  if (wallet.balance < amount) {
+    throw new Error("Insufficient balance");
+  }
 
-    const transaction: Transaction = {
-      id: Date.now().toString(),
-      type: "debit",
-      amount,
-      description: "Withdrawal to bank account",
-      timestamp: Date.now(),
-    };
+  const transaction: Transaction = {
+    id: Date.now().toString(),
+    type: "debit",
+    amount,
+    description: "Withdrawal to bank account",
+    timestamp: Date.now(),
+  };
 
-    wallet.balance -= amount;
-    wallet.transactions.unshift(transaction);
+  wallet.balance -= amount;
+  wallet.transactions.unshift(transaction);
 
-    await this.updateWallet(wallet);
-  },
+  await this.updateWallet(wallet);
+  
+  // ✅ Play debit sound
+  await soundManager.play('debit');
+},
 
   // -----------------------------
   // PRODUCTS
@@ -367,6 +410,7 @@ export const firebaseService = {
     await updateDoc(ref, { id: ref.id });
 
     const snap = await getDoc(ref);
+    await soundManager.play('productAdded');
     return snap.data() as Product;
   },
 
@@ -467,7 +511,9 @@ export const firebaseService = {
           })
         );
       }
+      
     }
+    
 
     const totalAmount = subtotal - discount;
     const commission = totalAmount * COMMISSION_RATE;
@@ -504,6 +550,8 @@ export const firebaseService = {
     });
     await this.updateWallet(sellerWallet);
 
+    await soundManager.play('deposit');
+
     // Admin commission
     const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
     if (!adminUsers.empty) {
@@ -518,6 +566,7 @@ export const firebaseService = {
         timestamp: Date.now(),
       });
       await this.updateWallet(adminWallet);
+      await soundManager.play('deposit');
     }
 
     // 5. NEW: Check if this is buyer's first purchase and release referral bonus
@@ -552,6 +601,9 @@ export const firebaseService = {
         
         await this.updateWallet(referrerWallet);
 
+        await soundManager.play('deposit');
+
+
         // Update referrer's total referral bonus earned
         const referrerDoc = await getDoc(doc(db, "users", buyer.referredBy));
         if (referrerDoc.exists()) {
@@ -570,8 +622,9 @@ export const firebaseService = {
         totalAmount,
         products
       );
-    }
 
+    }
+   
     // 6. Send seller notification
     const sellerDoc = await getDoc(doc(db, "users", sellerId));
     if (sellerDoc.exists()) {
@@ -585,21 +638,43 @@ export const firebaseService = {
       );
     }
 
+    await soundManager.play('orderPlaced');
+
     const snap = await getDoc(orderRef);
     return snap.data() as Order;
   },
 
   async getOrders(userId: string, role: UserRole): Promise<Order[]> {
-    const ordersCol = collection(db, "orders");
-    let q: any;
+  const ordersCol = collection(db, "orders");
 
-    if (role === "admin") q = ordersCol;
-    else if (role === "buyer") q = query(ordersCol, where("buyerId", "==", userId));
-    else q = query(ordersCol, where("sellerId", "==", userId));
+  let orders: Order[] = [];
 
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => doc.data() as Order).sort((a, b) => b.createdAt - a.createdAt);
-  },
+  // Admins see everything
+  if (role === "admin") {
+    const snapshot = await getDocs(ordersCol);
+    orders = snapshot.docs.map(doc => doc.data() as Order);
+  } 
+  // Everyone else: show orders where they are buyer OR seller
+  else {
+    const [asBuyerSnap, asSellerSnap] = await Promise.all([
+      getDocs(query(ordersCol, where("buyerId", "==", userId))),
+      getDocs(query(ordersCol, where("sellerId", "==", userId)))
+    ]);
+
+    const asBuyer = asBuyerSnap.docs.map(d => d.data() as Order);
+    const asSeller = asSellerSnap.docs.map(d => d.data() as Order);
+
+    // Combine and remove duplicates (in case of weird data)
+    const combined = [...asBuyer, ...asSeller];
+    const unique = combined.filter((order, index, self) =>
+      index === self.findIndex(o => o.id === order.id)
+    );
+
+    orders = unique;
+  }
+
+  return orders.sort((a, b) => b.createdAt - a.createdAt);
+},
 
   async confirmOrderDelivery(orderId: string, buyerId: string): Promise<void> {
     const orderRef = doc(db, "orders", orderId);
@@ -637,6 +712,8 @@ export const firebaseService = {
     });
 
     await this.updateWallet(sellerWallet);
+
+    await soundManager.play('delivered');
 
     const buyerDoc = await getDoc(doc(db, "users", buyerId));
     const sellerDoc = await getDoc(doc(db, "users", order.sellerId));
@@ -703,6 +780,7 @@ export const firebaseService = {
     });
 
     await this.updateWallet(sellerWallet);
+    
 
     buyerWallet.balance += order.totalAmount;
     buyerWallet.transactions.unshift({
@@ -714,6 +792,7 @@ export const firebaseService = {
     });
 
     await this.updateWallet(buyerWallet);
+    await soundManager.play('deposit');
 
     const adminUsers = await getDocs(
       query(collection(db, "users"), where("role", "==", "admin"))
@@ -733,6 +812,8 @@ export const firebaseService = {
       });
 
       await this.updateWallet(adminWallet);
+      await soundManager.play('debit');
+
     }
 
     const buyerDoc = await getDoc(doc(db, "users", order.buyerId));
@@ -805,6 +886,7 @@ export const firebaseService = {
     });
 
     await this.updateWallet(sellerWallet);
+    await soundManager.play('debit');
 
     buyerWallet.balance += order.totalAmount;
     buyerWallet.transactions.unshift({
@@ -816,6 +898,7 @@ export const firebaseService = {
     });
 
     await this.updateWallet(buyerWallet);
+    await soundManager.play('deposit');
 
     const adminUsers = await getDocs(
       query(collection(db, "users"), where("role", "==", "admin"))
@@ -835,6 +918,7 @@ export const firebaseService = {
       });
 
       await this.updateWallet(adminWallet);
+      await soundManager.play('deposit');
     }
 
     const buyerDoc = await getDoc(doc(db, "users", buyerId));
@@ -864,30 +948,33 @@ export const firebaseService = {
   },
 
   async openDispute(
-    orderId: string,
-    userId: string,
-    disputeDetails: string
-  ): Promise<void> {
-    const orderRef = doc(db, "orders", orderId);
-    const orderSnap = await getDoc(orderRef);
+  orderId: string,
+  userId: string,
+  disputeDetails: string
+): Promise<void> {
+  const orderRef = doc(db, "orders", orderId);
+  const orderSnap = await getDoc(orderRef);
 
-    if (!orderSnap.exists()) throw new Error("Order not found");
+  if (!orderSnap.exists()) throw new Error("Order not found");
 
-    const order = orderSnap.data() as Order;
+  const order = orderSnap.data() as Order;
 
-    if (order.buyerId !== userId && order.sellerId !== userId) {
-      throw new Error("Unauthorized: Only buyer or seller can open dispute");
-    }
+  if (order.buyerId !== userId && order.sellerId !== userId) {
+    throw new Error("Unauthorized: Only buyer or seller can open dispute");
+  }
 
-    if (order.status === "cancelled") {
-      throw new Error("Cannot open dispute for cancelled orders");
-    }
+  if (order.status === "cancelled") {
+    throw new Error("Cannot open dispute for cancelled orders");
+  }
 
-    await updateDoc(orderRef, {
-      disputeStatus: "open",
-      disputeDetails,
-      updatedAt: Date.now(),
-    });
+  await updateDoc(orderRef, {
+    disputeStatus: "open",
+    disputeDetails,
+    updatedAt: Date.now(),
+  });
+  
+  // ✅ Play dispute sound
+  await soundManager.play('dispute');
 
     const adminUsers = await getDocs(
       query(collection(db, "users"), where("role", "==", "admin"))
@@ -984,6 +1071,7 @@ export const firebaseService = {
         timestamp: Date.now(),
       });
       await this.updateWallet(buyerWallet);
+      await soundManager.play('deposit');
 
       sellerWallet.pendingBalance -= (order.totalAmount - order.commission);
       sellerWallet.transactions.unshift({
@@ -994,6 +1082,7 @@ export const firebaseService = {
         timestamp: Date.now(),
       });
       await this.updateWallet(sellerWallet);
+      await soundManager.play('debit');
 
       const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
       if (!adminUsers.empty) {
@@ -1007,6 +1096,7 @@ export const firebaseService = {
           timestamp: Date.now(),
         });
         await this.updateWallet(adminWallet);
+        await soundManager.play('debit');
       }
     } else {
       updates.status = "delivered";
@@ -1024,6 +1114,7 @@ export const firebaseService = {
         timestamp: Date.now(),
       });
       await this.updateWallet(sellerWallet);
+      await soundManager.play('deposit');
     }
 
     await updateDoc(orderRef, updates);
@@ -1125,49 +1216,58 @@ export const firebaseService = {
   // ORDER TRACKING
   // -----------------------------
   async updateOrderTracking(
-    orderId: string,
-    status: "acknowledged" | "enroute" | "ready_for_pickup"
-  ): Promise<void> {
-    const orderRef = doc(db, "orders", orderId);
-    const orderSnap = await getDoc(orderRef);
+  orderId: string,
+  status: "acknowledged" | "enroute" | "ready_for_pickup"
+): Promise<void> {
+  const orderRef = doc(db, "orders", orderId);
+  const orderSnap = await getDoc(orderRef);
 
-    if (!orderSnap.exists()) throw new Error("Order not found");
+  if (!orderSnap.exists()) throw new Error("Order not found");
 
-    const order = orderSnap.data() as Order;
+  const order = orderSnap.data() as Order;
 
-    if (order.status !== "running") {
-      throw new Error("Can only update tracking for running orders");
-    }
+  if (order.status !== "running") {
+    throw new Error("Can only update tracking for running orders");
+  }
 
-    const trackingEvent: TrackingEvent = {
+  const trackingEvent: TrackingEvent = {
+    status,
+    timestamp: Date.now(),
+    message: this.getTrackingMessage(status),
+  };
+
+  const trackingHistory = order.trackingHistory || [];
+  trackingHistory.push(trackingEvent);
+
+  await updateDoc(orderRef, {
+    trackingStatus: status,
+    trackingHistory,
+    updatedAt: Date.now(),
+  });
+
+  await this.sendTrackingNotification(order.buyerId, orderId, status);
+
+  // ✅ Play appropriate tracking sound
+  if (status === 'acknowledged') {
+    await soundManager.play('acknowledged');
+  } else if (status === 'enroute') {
+    await soundManager.play('enroute');
+  } else if (status === 'ready_for_pickup') {
+    await soundManager.play('ready');
+  }
+
+  const buyerDoc = await getDoc(doc(db, "users", order.buyerId));
+  if (buyerDoc.exists()) {
+    const buyer = buyerDoc.data();
+    await emailService.sendOrderTrackingUpdate(
+      buyer.email,
+      buyer.name,
+      orderId,
       status,
-      timestamp: Date.now(),
-      message: this.getTrackingMessage(status),
-    };
-
-    const trackingHistory = order.trackingHistory || [];
-    trackingHistory.push(trackingEvent);
-
-    await updateDoc(orderRef, {
-      trackingStatus: status,
-      trackingHistory,
-      updatedAt: Date.now(),
-    });
-
-    await this.sendTrackingNotification(order.buyerId, orderId, status);
-
-    const buyerDoc = await getDoc(doc(db, "users", order.buyerId));
-    if (buyerDoc.exists()) {
-      const buyer = buyerDoc.data();
-      await emailService.sendOrderTrackingUpdate(
-        buyer.email,
-        buyer.name,
-        orderId,
-        status,
-        this.getTrackingMessage(status)
-      );
-    }
-  },
+      this.getTrackingMessage(status)
+    );
+  }
+},
 
   getTrackingMessage(status: string): string {
     switch (status) {
@@ -1241,4 +1341,5 @@ export const firebaseService = {
     return updatedUserSnap.data() as any;
   }
 },
+
 };

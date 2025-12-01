@@ -7,11 +7,12 @@ import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
 import { ThemedText } from "../components/ThemedText";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenScrollView } from "../components/ScreenScrollView";
-import { firebaseService, Product } from "../services/firebaseService";
+import { firebaseService, Product, User } from "../services/firebaseService";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
+import { calculateDeliveryTimeframe, getDeliveryIcon } from "../utils/locationUtils";
 
 type RouteParams = { productId: string };
 
@@ -23,6 +24,7 @@ export default function ProductDetailScreen() {
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState<Product | null>(null);
+  const [seller, setSeller] = useState<User | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -38,6 +40,13 @@ export default function ProductDetailScreen() {
       const products = await firebaseService.getProducts();
       const found = products.find((p) => p.id === route.params?.productId);
       setProduct(found || null);
+
+      // Load seller info for delivery calculation
+      if (found) {
+        const users = await firebaseService.getAllUsers();
+        const sellerData = users.find((u) => u.uid === found.sellerId);
+        setSeller(sellerData || null);
+      }
     } catch (error) {
       console.error("Error loading product:", error);
       Alert.alert("Error", "Failed to load product");
@@ -60,6 +69,23 @@ export default function ProductDetailScreen() {
     }
 
     return [];
+  };
+
+  // Calculate delivery timeframe
+  const getDeliveryInfo = () => {
+    if (!user || !seller || !product) {
+      return null;
+    }
+
+    const timeframe = calculateDeliveryTimeframe(user.location, seller.location);
+    const icon = getDeliveryIcon(user.location, seller.location);
+
+    return {
+      text: `${timeframe.min} - ${timeframe.max}`,
+      description: timeframe.description,
+      icon,
+      zone: timeframe.zone,
+    };
   };
 
   if (loading) {
@@ -98,6 +124,8 @@ export default function ProductDetailScreen() {
     ? new Date(product.expiryDate) < new Date()
     : false;
 
+  const deliveryInfo = getDeliveryInfo();
+
   const handleAddToCart = () => {
     if (!user) {
       Alert.alert("Login Required", "Please sign in to add items to cart");
@@ -123,20 +151,6 @@ export default function ProductDetailScreen() {
       { text: "Go to Cart", onPress: () => navigation.navigate("Cart") },
     ]);
   };
-  // Add this section after the Title section in ProductDetailScreen
-
-{/* Business Name - NEW */}
-{product.sellerBusinessName && (
-  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm }}>
-    <Feather name="briefcase" size={14} color={theme.primary} />
-    <ThemedText
-      type="body"
-      style={{ marginLeft: 6, color: theme.primary, fontSize: 14, fontWeight: "600" }}
-    >
-      Sold by: {product.sellerBusinessName}
-    </ThemedText>
-  </View>
-)}
 
   const handleScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -219,6 +233,19 @@ export default function ProductDetailScreen() {
             {product.name}
           </ThemedText>
 
+          {/* Business Name */}
+          {product.sellerBusinessName && (
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm }}>
+              <Feather name="briefcase" size={14} color={theme.primary} />
+              <ThemedText
+                type="body"
+                style={{ marginLeft: 6, color: theme.primary, fontSize: 14, fontWeight: "600" }}
+              >
+                Sold by: {product.sellerBusinessName}
+              </ThemedText>
+            </View>
+          )}
+
           {/* Brand & Weight */}
           {(product.brand || product.weight) && (
             <ThemedText type="body" style={{ color: theme.primary, marginBottom: Spacing.sm }}>
@@ -238,6 +265,40 @@ export default function ProductDetailScreen() {
                 {product.location.city}
                 {product.location.area ? `, ${product.location.area}` : ""}
               </ThemedText>
+            </View>
+          )}
+
+          {/* Delivery Timeframe Card - NEW */}
+          {user && deliveryInfo && (
+            <View style={[
+              styles.deliveryCard,
+              {
+                backgroundColor: deliveryInfo.zone === "same_area" || deliveryInfo.zone === "same_city"
+                  ? theme.success + "15"
+                  : theme.backgroundSecondary,
+                borderColor: deliveryInfo.zone === "same_area" || deliveryInfo.zone === "same_city"
+                  ? theme.success
+                  : theme.border,
+              }
+            ]}>
+              <View style={[
+                styles.deliveryIconCircle,
+                {
+                  backgroundColor: deliveryInfo.zone === "same_area" || deliveryInfo.zone === "same_city"
+                    ? theme.success
+                    : theme.primary
+                }
+              ]}>
+                <Feather name={deliveryInfo.icon} size={20} color="#fff" />
+              </View>
+              <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                <ThemedText type="body" style={{ fontWeight: "600" }}>
+                  Delivery: {deliveryInfo.text}
+                </ThemedText>
+                <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+                  {deliveryInfo.description}
+                </ThemedText>
+              </View>
             </View>
           )}
 
@@ -332,6 +393,23 @@ export default function ProductDetailScreen() {
             {product.description || "No description available."}
           </ThemedText>
 
+          {/* Delivery Terms Notice */}
+          {user && deliveryInfo && (
+            <View style={[styles.deliveryTermsBox, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
+              <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                <Feather name="info" size={16} color={theme.primary} />
+                <View style={{ flex: 1, marginLeft: Spacing.sm }}>
+                  <ThemedText type="caption" style={{ fontWeight: "600", marginBottom: 4 }}>
+                    Delivery Terms
+                  </ThemedText>
+                  <ThemedText type="caption" style={{ color: theme.textSecondary, lineHeight: 18 }}>
+                    Expected delivery: {deliveryInfo.text}. If not delivered within the stated timeframe, you can open a dispute for a full refund. Terms & Conditions apply.
+                  </ThemedText>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Quantity Selector */}
           <View style={styles.quantitySection}>
             <ThemedText type="h4">Quantity</ThemedText>
@@ -371,6 +449,16 @@ export default function ProductDetailScreen() {
             disabled={product.stock === 0 || isExpired}
             style={{ marginTop: Spacing.xl }}
           />
+
+          {/* Login Prompt for Non-logged-in Users */}
+          {!user && (
+            <View style={[styles.loginPrompt, { backgroundColor: theme.warning + "15", borderColor: theme.warning }]}>
+              <Feather name="alert-circle" size={18} color={theme.warning} />
+              <ThemedText type="caption" style={{ marginLeft: Spacing.sm, color: theme.warning, flex: 1 }}>
+                Sign in to see personalized delivery times and add items to cart
+              </ThemedText>
+            </View>
+          )}
         </View>
       </View>
     </ScreenScrollView>
@@ -418,6 +506,27 @@ const styles = StyleSheet.create({
   outOfStockText: { color: "#fff", fontSize: 24, fontWeight: "bold" },
   content: { padding: Spacing.xl },
   title: { marginBottom: 4 },
+  deliveryCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginVertical: Spacing.md,
+  },
+  deliveryIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  deliveryTermsBox: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginTop: Spacing.lg,
+  },
   priceRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: Spacing.md },
   strikethrough: { textDecorationLine: "line-through" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginVertical: Spacing.md },
@@ -436,7 +545,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: BorderRadius.lg,
-    backgroundColor: "#f0f0f0",
+    
     justifyContent: "center",
     alignItems: "center",
   },
@@ -448,6 +557,14 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     borderTopWidth: 1,
     borderTopColor: "#eee",
+    marginTop: Spacing.lg,
+  },
+  loginPrompt: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
     marginTop: Spacing.lg,
   },
 });

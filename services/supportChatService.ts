@@ -4,7 +4,7 @@ export interface SupportMessage {
   id: string;
   chatId: string;
   senderId: string;
-  senderRole: "admin" | "buyer" | "seller";
+  senderRole: "admin" | "buyer" | "seller" | "support_agent";
   senderName: string;
   message: string;
   timestamp: number;
@@ -161,7 +161,7 @@ export const supportChatService = {
   async sendMessage(
     chatId: string,
     senderId: string,
-    senderRole: "admin" | "buyer" | "seller",
+    senderRole: "admin" | "buyer" | "seller" | "support_agent",
     senderName: string,
     message: string,
     attachments?: string[]
@@ -174,7 +174,7 @@ export const supportChatService = {
       message: message.trim(),
       timestamp: Date.now(),
       isRead: false,
-      attachments,
+      attachments: attachments  ?? [],
     };
 
     const messageRef = await addDoc(

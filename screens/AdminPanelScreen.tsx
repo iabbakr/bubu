@@ -91,6 +91,37 @@ export default function AdminPanelScreen() {
           Admin Panel
         </ThemedText>
         <Pressable
+          onPress={() => navigation.navigate("AdminRoleManagement")}
+          style={[styles.adminButton, { backgroundColor: theme.primary }]}
+        >
+          <Feather name="users" size={20} color="#fff" />
+          <ThemedText style={{ color: "#fff", marginLeft: Spacing.sm }}>
+            Role Management
+          </ThemedText>
+        </Pressable>
+        
+        <Pressable
+          onPress={() => navigation.navigate("StateManagerDashboard")}
+          style={[styles.adminButton, { backgroundColor: theme.info }]}
+        >
+          <Feather name="map" size={20} color="#fff" />
+          <ThemedText style={{ color: "#fff", marginLeft: Spacing.sm }}>
+            State Manager Dashboard
+          </ThemedText>
+        </Pressable>
+        
+        {orders.length > 0 && (
+          <Pressable
+            onPress={() => navigation.navigate("AdminDispute", { orderId: orders[0].id })}
+            style={[styles.adminButton, { backgroundColor: theme.warning }]}
+          >
+            <Feather name="alert-circle" size={20} color="#fff" />
+            <ThemedText style={{ color: "#fff", marginLeft: Spacing.sm }}>
+              View Disputes
+            </ThemedText>
+          </Pressable>
+        )}
+        <Pressable
   onPress={() => {
     if (orders.length > 0) {
       // Navigate to AdminDisputeScreen using the first order's ID
@@ -258,4 +289,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: Spacing.md,
   },
+  adminButton: {
+  flexDirection: "row",
+  alignItems: "center",
+  padding: Spacing.md,
+  borderRadius: BorderRadius.md,
+  marginBottom: Spacing.md,
+},
 });

@@ -8,6 +8,8 @@ import { firebaseService, Order, User } from "../services/firebaseService";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
+import { soundManager } from '../lib/soundManager';
+import { getDeliveryDescription, getDeliveryIcon, calculateDeliveryTimeframe } from "../utils/locationUtils";
 
 type RouteParams = { orderId: string };
 type OrderTrackingStatus = "acknowledged" | "enroute" | "ready_for_pickup";
@@ -96,6 +98,7 @@ export default function OrderDetailScreen() {
   const route = useRoute<RouteProp<{ params: RouteParams }, "params">>();
 
   const [order, setOrder] = useState<Order | null>(null);
+  const [seller, setSeller] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
@@ -110,6 +113,13 @@ export default function OrderDetailScreen() {
     try {
       const orderData = await firebaseService.getOrder(route.params?.orderId);
       setOrder(orderData);
+      
+      // Load seller info for location comparison
+      if (orderData) {
+        const users = await firebaseService.getAllUsers();
+        const sellerData = users.find((u) => u.uid === orderData.sellerId);
+        setSeller(sellerData || null);
+      }
     } catch (error) {
       console.error("Error loading order:", error);
       Alert.alert("Error", "Failed to load order details");
@@ -222,6 +232,23 @@ export default function OrderDetailScreen() {
     return isBuyer ? "Cancel Order" : "Cancel Order";
   };
 
+  // Get delivery timeframe based on locations
+  const getDeliveryTimeframeInfo = () => {
+    if (!order || !user || !seller) {
+      return "Delivery timeframe to be confirmed";
+    }
+
+    const timeframe = calculateDeliveryTimeframe(user.location, seller.location);
+    const icon = getDeliveryIcon(user.location, seller.location);
+    
+    return {
+      text: `${timeframe.min} - ${timeframe.max}`,
+      description: timeframe.description,
+      icon,
+      zone: timeframe.zone,
+    };
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -244,9 +271,14 @@ export default function OrderDetailScreen() {
   const isBuyer = user?.uid === order.buyerId;
   const isSeller = user?.uid === order.sellerId;
   const isAdmin = user?.role === "admin";
+  const deliveryInfo = getDeliveryTimeframeInfo();
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
+    <ScrollView 
+      style={[styles.container, { backgroundColor: theme.background }]}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.content}>
 
         {/* Order Header */}
@@ -264,6 +296,43 @@ export default function OrderDetailScreen() {
             </ThemedText>
           </View>
         </View>
+
+        {/* Delivery Timeframe Notice - Show for running orders */}
+        {order.status === "running" && typeof deliveryInfo !== "string" && (
+          <View style={[
+            styles.deliveryTimeframeCard, 
+            { 
+              backgroundColor: deliveryInfo.zone === "same_area" || deliveryInfo.zone === "same_city" 
+                ? theme.success + "15" 
+                : theme.backgroundSecondary,
+              borderColor: deliveryInfo.zone === "same_area" || deliveryInfo.zone === "same_city"
+                ? theme.success
+                : theme.border
+            }
+          ]}>
+            <View style={[
+              styles.deliveryIconCircle,
+              { 
+                backgroundColor: deliveryInfo.zone === "same_area" || deliveryInfo.zone === "same_city"
+                  ? theme.success
+                  : theme.primary
+              }
+            ]}>
+              <Feather name={deliveryInfo.icon} size={24} color="#fff" />
+            </View>
+            <View style={{ flex: 1, marginLeft: Spacing.md }}>
+              <ThemedText type="h4" style={{ fontWeight: "600" }}>
+                Estimated Delivery: {deliveryInfo.text}
+              </ThemedText>
+              <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 4 }}>
+                {deliveryInfo.description}
+              </ThemedText>
+              <ThemedText type="caption" style={{ color: theme.warning, marginTop: 8, fontStyle: "italic" }}>
+                If not delivered within stated time, you can open a dispute for refund. T&C apply.
+              </ThemedText>
+            </View>
+          </View>
+        )}
 
         {/* Order Tracking */}
         {order.status === "running" && (
@@ -372,7 +441,7 @@ export default function OrderDetailScreen() {
           ))}
         </View>
 
-        {/* Seller Business Info - NEW SECTION */}
+        {/* Seller Business Info */}
         <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
             Seller Information
@@ -482,7 +551,7 @@ export default function OrderDetailScreen() {
                 title="Open Dispute"
                 onPress={() => setShowDisputeModal(true)}
                 variant="outlined"
-                style={{ marginTop: Spacing.sm }}
+                style={{ marginTop: Spacing.sm, gap: 5, }}
               />
             )}
 
@@ -589,8 +658,16 @@ export default function OrderDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { padding: Spacing.lg, paddingBottom: 40 },
+  container: { 
+    flex: 1 
+  },
+  scrollContent: {
+    paddingTop: 100,
+    paddingBottom: 100,
+  },
+  content: { 
+    padding: Spacing.lg,
+  },
   header: {
     padding: Spacing.lg,
     borderRadius: BorderRadius.md,
@@ -603,6 +680,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.sm,
+  },
+  deliveryTimeframeCard: {
+    flexDirection: "row",
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+    marginBottom: Spacing.lg,
+    alignItems: "flex-start",
+  },
+  deliveryIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
   },
   section: {
     padding: Spacing.lg,
@@ -650,7 +742,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: Spacing.lg,
   },
-  actions: { marginTop: Spacing.lg },
+  actions: { 
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.xl,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

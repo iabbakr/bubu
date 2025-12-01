@@ -262,7 +262,7 @@ export default function DisputeChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: theme.background }}
+      style={{ flex: 1, backgroundColor: theme.background, paddingTop: 120, }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
@@ -374,13 +374,15 @@ const styles = StyleSheet.create({
   messagesList: {
     padding: Spacing.md,
     paddingBottom: Spacing.xl,
+    
   },
   headerInfo: {
     flexDirection: "row",
     alignItems: "center",
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
-    marginBottom: Spacing.lg,
+  
+    
   },
   messageContainer: {
     marginVertical: Spacing.xs,

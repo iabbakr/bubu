@@ -410,7 +410,10 @@ export default function AuthScreen() {
    STYLES
 ----------------------------------------------------- */
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, 
+    marginTop: 50,
+  },
+  
   header: {
     alignItems: "center",
     padding: Spacing["3xl"],

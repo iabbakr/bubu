@@ -11,14 +11,21 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { useLanguage } from "../context/LanguageContext";
 import i18n from "../lib/i18n"; // ← ADD THIS LINE
-import {T} from "../components/T"
+import {T} from "../components/T";
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
+
+type ProfileScreenNavigationProp = NativeStackNavigationProp<ProfileStackParamList, 'Profile'>;
+
 
 export default function ProfileScreen() {
   const { locale } = useLanguage();
   const { theme } = useTheme();
   const { user, signOut } = useAuth();
-  const navigation = useNavigation();
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  const navigation = useNavigation<ProfileScreenNavigationProp>();
+  
+
 
   useEffect(() => {
     if (user) {
@@ -170,6 +177,39 @@ export default function ProfileScreen() {
             )}
           </View>
         )}
+        // Add this section in ProfileScreen after the Business section
+{(user.role === "state_manager_1" || user.role === "state_manager_2") && (
+  <View style={styles.menuSection}>
+    <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
+      State Management
+    </ThemedText>
+    {renderMenuItem(
+      "map", 
+      "State Dashboard", 
+      () => navigation.navigate("StateManagerDashboard")
+    )}
+  </View>
+)}
+
+{user.role === "admin" && (
+  <View style={styles.menuSection}>
+    <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
+      Administration
+    </ThemedText>
+    {renderMenuItem(
+      "shield", 
+      "Admin Panel", 
+      () => navigation.navigate("AdminPanel")
+    )}
+    {renderMenuItem(
+      "users", 
+      "Role Management", 
+      () => navigation.navigate("AdminRoleManagement")
+    )}
+  </View>
+)}
+
+        
 
         {/* Settings Section */}
         <View style={styles.menuSection}>

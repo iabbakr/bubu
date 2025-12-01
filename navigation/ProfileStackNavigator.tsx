@@ -31,6 +31,8 @@ import HelpCenterScreen from "@/screens/HelpCenterScreen";
 import LanguageScreen from "@/screens/LanguageScreen";
 import i18n from "@/lib/i18n";
 import CartScreen from "@/screens/CartScreen";
+import AdminRoleManagement from "../screens/AdminRoleManagement";
+import StateManagerDashboard from "../screens/StateManagerDashboard";
 
 export type ProfileStackParamList = {
   Profile: undefined;
@@ -54,6 +56,9 @@ export type ProfileStackParamList = {
   Cart: undefined;
   ChangePassword: undefined;
   ForgotPassword: undefined;
+  AdminRole: undefined;
+  StateManagerDashboard: undefined;
+  AdminRoleManagement: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -132,6 +137,20 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+          <Stack.Screen 
+            name="StateManagerDashboard" 
+            component={StateManagerDashboard}
+            options={{
+              title: "Manager Panel",
+              headerBackTitle: "Back",
+            }} />
+          <Stack.Screen 
+            name="AdminRoleManagement" 
+            component={AdminRoleManagement}
+            options={{
+              title: "Admin Role",
+              headerBackTitle: "Back",
+            }} />
 
           <Stack.Screen
             name="AdminDispute"
@@ -261,6 +280,14 @@ export default function ProfileStackNavigator() {
             component={ForgotPasswordScreen}
             options={{
               title: "Forgot Password",
+              headerBackTitle: "Back",
+            }}
+          />
+          <Stack.Screen
+            name="AdminRole"
+            component={AdminRoleManagement}
+            options={{
+              title: "Admin R",
               headerBackTitle: "Back",
             }}
           />

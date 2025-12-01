@@ -24,6 +24,7 @@ import {
   SupportChat,
 } from "../services/supportChatService";
 import { ProfileStackParamList } from "../navigation/ProfileStackNavigator";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type AdminSupportChatRouteProp = RouteProp<ProfileStackParamList, "AdminSupportChat">;
 
@@ -33,6 +34,7 @@ export default function AdminSupportChatScreen() {
   const route = useRoute<AdminSupportChatRouteProp>();
   const navigation = useNavigation();
   const flatListRef = useRef<FlatList>(null);
+  const insets = useSafeAreaInsets(); // ✅ Get safe area insets
 
   const { chatId } = route.params;
 
@@ -76,8 +78,6 @@ export default function AdminSupportChatScreen() {
 
   const loadChat = async () => {
     try {
-      // In a real implementation, you'd have a method to get chat by ID
-      // For now, we'll fetch all and filter
       const allChats = await supportChatService.getAllChats();
       const foundChat = allChats.find((c) => c.id === chatId);
       
@@ -246,14 +246,18 @@ export default function AdminSupportChatScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={90}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
       {/* Header */}
       <View
         style={[
           styles.header,
-          { backgroundColor: theme.cardBackground, borderBottomColor: theme.border },
+          { 
+            backgroundColor: theme.cardBackground, 
+            borderBottomColor: theme.border,
+            paddingTop: insets.top > 0 ? insets.top : Spacing.md, // ✅ Add top safe area padding
+          },
         ]}
       >
         <View style={{ flex: 1 }}>
@@ -339,73 +343,84 @@ export default function AdminSupportChatScreen() {
         data={messages}
         keyExtractor={(item) => item.id}
         renderItem={renderMessage}
-        contentContainerStyle={styles.messagesList}
+        contentContainerStyle={[
+          styles.messagesList,
+          { 
+            paddingBottom: chat.status === "active" ? 20 : 80 // ✅ Extra padding when input is visible
+          }
+        ]}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        showsVerticalScrollIndicator={false}
       />
 
-      {/* Input */}
+      {/* Input & Quick Responses Container */}
       {chat.status === "active" && (
-        <View
-          style={[
-            styles.inputContainer,
-            { backgroundColor: theme.cardBackground, borderTopColor: theme.border },
-          ]}
-        >
-          <TextInput
+        <View style={{ paddingBottom: insets.bottom > 0 ? insets.bottom : Spacing.lg}}> 
+          {/* Quick Responses */}
+          <View
             style={[
-              styles.input,
-              { backgroundColor: theme.background, color: theme.text },
+              styles.quickResponsesContainer,
+              { backgroundColor: theme.cardBackground, borderTopColor: theme.border },
             ]}
-            placeholder="Type your message..."
-            placeholderTextColor={theme.textSecondary}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={1000}
-          />
-          <Pressable
-            style={[
-              styles.sendButton,
-              { backgroundColor: inputText.trim() ? theme.primary : theme.border },
-            ]}
-            onPress={handleSendMessage}
-            disabled={!inputText.trim() || sending}
           >
-            {sending ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Feather name="send" size={20} color="#fff" />
-            )}
-          </Pressable>
-        </View>
-      )}
+            <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: Spacing.xs }}>
+              Quick Responses:
+            </ThemedText>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: Spacing.xs }}>
+              {[
+  "Thank you for contacting us!",
+  "Please provide more details.",
+  "I'll look into this right away.",
+  "This issue has been escalated.",
+  "Is there anything else I can help with?",
+].map((response) => (
+  <Pressable
+    key={response}   // ← Use the string itself as key (100% unique and stable)
+    style={[
+      styles.quickResponseButton,
+      { backgroundColor: theme.background, borderColor: theme.border },
+    ]}
+    onPress={() => setInputText(response)}
+  >
+    <ThemedText type="caption">{response}</ThemedText>
+  </Pressable>
+))}
+            </View>
+          </View>
 
-      {/* Quick Responses */}
-      {chat.status === "active" && (
-        <View
-          style={[
-            styles.quickResponsesContainer,
-            { backgroundColor: theme.cardBackground, borderTopColor: theme.border },
-          ]}
-        >
-          <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: Spacing.xs }}>
-            Quick Responses:
-          </ThemedText>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: Spacing.xs }}>
-            {["Thank you for contacting us!", "I'll look into this right away.", "Is there anything else I can help with?"].map(
-              (response, index) => (
-                <Pressable
-                  key={index}
-                  style={[
-                    styles.quickResponseButton,
-                    { backgroundColor: theme.background, borderColor: theme.border },
-                  ]}
-                  onPress={() => setInputText(response)}
-                >
-                  <ThemedText type="caption">{response}</ThemedText>
-                </Pressable>
-              )
-            )}
+          {/* Input */}
+          <View
+            style={[
+              styles.inputContainer,
+              { backgroundColor: theme.cardBackground, borderTopColor: theme.border, paddingBottom: 50 },
+            ]}
+          >
+            <TextInput
+              style={[
+                styles.input,
+                { backgroundColor: theme.background, color: theme.text },
+              ]}
+              placeholder="Type your message..."
+              placeholderTextColor={theme.textSecondary}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={500}
+            />
+            <Pressable
+              style={[
+                styles.sendButton,
+                { backgroundColor: inputText.trim() ? theme.primary : theme.border },
+              ]}
+              onPress={handleSendMessage}
+              disabled={!inputText.trim() || sending}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Feather name="send" size={20} color="#fff" />
+              )}
+            </Pressable>
           </View>
         </View>
       )}
@@ -416,6 +431,9 @@ export default function AdminSupportChatScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 60,
+   
+    
   },
   centerContainer: {
     flex: 1,
@@ -427,6 +445,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: Spacing.md,
     borderBottomWidth: 1,
+    
   },
   userRoleBadge: {
     paddingHorizontal: Spacing.xs,
@@ -448,7 +467,6 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     padding: Spacing.md,
-    paddingBottom: Spacing.xl,
   },
   messageContainer: {
     marginBottom: Spacing.md,

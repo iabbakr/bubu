@@ -627,3 +627,205 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Update in firebaseService.ts
+
+async createOrder(
+  buyerId: string,
+  sellerId: string,
+  products: OrderItem[],
+  deliveryAddress: string,
+  discount: number = 0,
+  phoneNumber?: string
+) {
+  // 1. Validate stock availability and calculate total
+  const productRefs = products.map(item =>
+    doc(db, "products", item.productId)
+  );
+  const productSnaps = await Promise.all(productRefs.map(ref => getDoc(ref)));
+
+  let subtotal = 0;
+  const stockUpdates: Promise<void>[] = [];
+
+  for (let i = 0; i < products.length; i++) {
+    const item = products[i];
+    const snap = productSnaps[i];
+
+    if (!snap.exists()) {
+      throw new Error(`Product ${item.productName} no longer exists`);
+    }
+
+    const product = snap.data() as Product;
+
+    if (product.stock < item.quantity) {
+      throw new Error(`Insufficient stock for ${product.name}. Only ${product.stock} left.`);
+    }
+
+    const unitPrice = product.discount
+      ? product.price * (1 - product.discount / 100)
+      : product.price;
+
+    subtotal += unitPrice * item.quantity;
+
+    const newStock = product.stock - item.quantity;
+
+    if (newStock === 0) {
+      stockUpdates.push(deleteDoc(doc(db, "products", item.productId)));
+    } else if (newStock > 0) {
+      stockUpdates.push(
+        updateDoc(doc(db, "products", item.productId), {
+          stock: newStock,
+        })
+      );
+    }
+  }
+
+  const totalAmount = subtotal - discount;
+  const commission = totalAmount * COMMISSION_RATE;
+
+  // 2. Create the order
+  const orderRef = await addDoc(collection(db, "orders"), {
+    buyerId,
+    sellerId,
+    products,
+    totalAmount,
+    commission,
+    status: "running",
+    deliveryAddress,
+    phoneNumber,
+    disputeStatus: "none",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  await updateDoc(orderRef, { id: orderRef.id });
+
+  // 3. Update product stocks
+  await Promise.all(stockUpdates);
+
+  // 4. Wallet updates
+  const sellerWallet = await this.getWallet(sellerId);
+  sellerWallet.pendingBalance += totalAmount - commission;
+  sellerWallet.transactions.unshift({
+    id: Date.now().toString(),
+    type: "credit",
+    amount: totalAmount - commission,
+    description: `Pending payment for order #${orderRef.id.slice(-6)}`,
+    timestamp: Date.now(),
+  });
+  await this.updateWallet(sellerWallet);
+
+  // Admin commission
+  const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
+  if (!adminUsers.empty) {
+    const adminId = adminUsers.docs[0].id;
+    const adminWallet = await this.getWallet(adminId);
+    adminWallet.balance += commission;
+    adminWallet.transactions.unshift({
+      id: Date.now().toString(),
+      type: "credit",
+      amount: commission,
+      description: `Commission from order #${orderRef.id.slice(-6)}`,
+      timestamp: Date.now(),
+    });
+    await this.updateWallet(adminWallet);
+  }
+
+  // 5. NEW: Check if this is buyer's first purchase and release referral bonus
+  const buyerDoc = await getDoc(doc(db, "users", buyerId));
+  if (buyerDoc.exists()) {
+    const buyer = buyerDoc.data() as User;
+    
+    // If this is first purchase and buyer was referred
+    if (!buyer.hasCompletedFirstPurchase && buyer.referredBy) {
+      // Mark buyer as having completed first purchase
+      await updateDoc(doc(db, "users", buyerId), {
+        hasCompletedFirstPurchase: true,
+      });
+
+      // Release referral bonus to referrer's main balance
+      const referrerWallet = await this.getWallet(buyer.referredBy);
+      const bonusAmount = 500;
+      
+      // Move from pending to main balance
+      referrerWallet.pendingBalance = Math.max(0, referrerWallet.pendingBalance - bonusAmount);
+      referrerWallet.balance += bonusAmount;
+      
+      // Add transaction showing bonus release
+      referrerWallet.transactions.unshift({
+        id: Date.now().toString(),
+        type: "credit",
+        amount: bonusAmount,
+        description: `Referral bonus released! ${buyer.name} completed their first purchase`,
+        timestamp: Date.now(),
+        status: "completed",
+      });
+      
+      await this.updateWallet(referrerWallet);
+
+      // Update referrer's total referral bonus earned
+      const referrerDoc = await getDoc(doc(db, "users", buyer.referredBy));
+      if (referrerDoc.exists()) {
+        const referrer = referrerDoc.data() as User;
+        await updateDoc(doc(db, "users", buyer.referredBy), {
+          referralBonus: (referrer.referralBonus || 0) + bonusAmount,
+        });
+      }
+    }
+  }
+
+  // 6. Send emails
+  if (buyerDoc.exists()) {
+    const buyer = buyerDoc.data();
+    await emailService.sendOrderConfirmation(
+      buyer.email,
+      buyer.name,
+      orderRef.id,
+      totalAmount,
+      products
+    );
+  }
+
+  const sellerDoc = await getDoc(doc(db, "users", sellerId));
+  if (sellerDoc.exists()) {
+    const seller = sellerDoc.data();
+    await emailService.sendSellerNotification(
+      seller.email,
+      seller.name,
+      orderRef.id,
+      totalAmount - commission,
+      'new_order'
+    );
+  }
+
+  const snap = await getDoc(orderRef);
+  return snap.data() as Order;
+}

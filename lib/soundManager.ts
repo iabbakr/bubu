@@ -6,22 +6,28 @@ export type SoundKey =
   | 'signin'
   | 'deposit'
   | 'debit'
+  | 'addToCart'
   | 'orderPlaced'
   | 'acknowledged'
   | 'enroute'
   | 'ready'
-  | 'delivered';
+  | 'delivered'
+  | 'productAdded'
+  | 'dispute';
 
 const Sounds: Record<SoundKey, any> = {
   signup: require('../assets/sounds/welcome_man.wav'),
-  signin: require('../assets/sounds/welcome_girl.wav'),
-  deposit: require('../assets/sounds/test.wav'),
+  signin: require('../assets/sounds/welcome_man.wav'),
+  deposit: require('../assets/sounds/coins.wav'),
   debit: require('../assets/sounds/test.wav'),
+  addToCart: require('../assets/sounds/delivered.wav'),
   orderPlaced: require('../assets/sounds/test.wav'),
-  acknowledged: require('../assets/sounds/test.wav'),
-  enroute: require('../assets/sounds/test.wav'),
-  ready: require('../assets/sounds/test.wav'),
-  delivered: require('../assets/sounds/test.wav'),
+  acknowledged: require('../assets/sounds/delivered.wav'),
+  enroute: require('../assets/sounds/delivered.wav'),
+  ready: require('../assets/sounds/delivered.wav'),
+  delivered: require('../assets/sounds/delivered.wav'),
+  dispute: require('../assets/sounds/test.wav'),
+  productAdded: require('../assets/sounds/delivered.wav'),
 };
 
 class SoundManager {
@@ -46,7 +52,7 @@ class SoundManager {
       }
 
       this.initialized = true;
-      console.log('SoundManager: All 9 sounds loaded successfully'); // ← FIXED!
+      console.log('SoundManager: All 11 sounds loaded successfully');
     } catch (error) {
       console.warn('SoundManager: Failed to load sounds (likely on web or missing files)', error);
     }
@@ -60,7 +66,7 @@ class SoundManager {
     }
 
     try {
-      await sound.replayAsync(); // Best method
+      await sound.replayAsync();
     } catch (error) {
       console.warn(`Failed to play sound: ${key}`, error);
     }

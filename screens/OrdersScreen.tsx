@@ -1,3 +1,5 @@
+// Update the getDeliveryTimeframe function in OrdersScreen.tsx
+
 import { View, StyleSheet, Pressable, Alert, TextInput, Modal, KeyboardAvoidingView, Platform } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
@@ -6,12 +8,13 @@ import { ThemedText } from "../components/ThemedText";
 import { OrderCard } from "../components/OrderCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenScrollView } from "../components/ScreenScrollView";
-import { firebaseService, Order } from "../services/firebaseService";
+import { firebaseService, Order, User } from "../services/firebaseService";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types/navigation";
+import { getDeliveryDescription, getDeliveryIcon, calculateDeliveryTimeframe } from "../utils/locationUtils";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type OrderStatus = "running" | "delivered" | "cancelled";
@@ -23,6 +26,7 @@ export default function OrdersScreen() {
 
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus>("running");
   const [orders, setOrders] = useState<Order[]>([]);
+  const [sellers, setSellers] = useState<Map<string, User>>(new Map());
   const [loading, setLoading] = useState(true);
 
   // Cancel modal
@@ -54,6 +58,16 @@ export default function OrdersScreen() {
       const data = await firebaseService.getOrders(user.uid, user.role);
       const filtered = data.filter(order => order.status === selectedStatus);
       setOrders(filtered);
+
+      // Load all sellers for location comparison
+      const users = await firebaseService.getAllUsers();
+      const sellersMap = new Map<string, User>();
+      users.forEach(u => {
+        if (u.role === "seller") {
+          sellersMap.set(u.uid, u);
+        }
+      });
+      setSellers(sellersMap);
     } catch (error) {
       console.error("Error loading orders:", error);
     } finally {
@@ -66,26 +80,40 @@ export default function OrdersScreen() {
   };
 
   const handleConfirmReceipt = (order: Order) => {
-    Alert.alert(
-      "Confirm Receipt",
-      "Have you received all items in good condition?",
-      [
-        { text: "No, Open Dispute", onPress: () => openDisputeModal(order) },
-        {
-          text: "Yes, Confirm",
-          onPress: async () => {
-            try {
-              await firebaseService.confirmOrderDelivery(order.id, user!.uid);
-              Alert.alert("Success", "Order marked as delivered. Payment released to seller.");
-              loadOrders();
-            } catch (error: any) {
-              Alert.alert("Error", error.message || "Failed to confirm delivery");
-            }
+  Alert.alert(
+    "Confirm Receipt",
+    "Have you physically received all items in good condition?",
+    [
+      {
+        text: "Cancel",
+        style: "cancel", // ← This makes it gray and safe
+        onPress: () => console.log("Confirmation cancelled"),
+      },
+      {
+        text: "No, Report Issue",
+        style: "default",
+        onPress: () => openDisputeModal(order),
+      },
+      {
+        text: "Yes, All Good!",
+        style: "destructive", // ← Makes it red, shows it's final action
+        onPress: async () => {
+          try {
+            await firebaseService.confirmOrderDelivery(order.id, user!.uid);
+            Alert.alert("Success", "Thank you! Payment has been released to the seller.");
+            loadOrders();
+          } catch (error: any) {
+            Alert.alert("Error", error.message || "Failed to confirm delivery");
           }
         },
-      ]
-    );
-  };
+      },
+    ],
+    { 
+      cancelable: true, // ← Allows tapping outside to dismiss (iOS/Android)
+      onDismiss: () => console.log("Alert dismissed"),
+    }
+  );
+};
 
   const handleSellerCancel = (order: Order) => {
     setSelectedOrder(order);
@@ -192,20 +220,22 @@ export default function OrdersScreen() {
     );
   };
 
-  const getDeliveryTimeframe = (order: Order) => {
-    if (!order.location) return "Delivery timeframe to be confirmed";
+  // Updated function using location utilities
+  const getDeliveryTimeframeInfo = (order: Order) => {
+    if (!user) return { text: "Delivery timeframe to be confirmed", icon: "package" };
     
-    // Assume current user location is same state/city for demo
-    const sameCity = true; // You would check order.location.city against user location
-    const sameState = true; // You would check order.location.state against user location
+    const seller = sellers.get(order.sellerId);
+    if (!seller) return { text: "Delivery timeframe to be confirmed", icon: "package" };
+
+    const timeframe = calculateDeliveryTimeframe(user.location, seller.location);
+    const icon = getDeliveryIcon(user.location, seller.location);
     
-    if (sameCity) {
-      return "3-6 hours (max 8 hours) - Within city";
-    } else if (sameState) {
-      return "24 hours (max 48 hours) - Within state";
-    } else {
-      return "24 hours to 5 days - Interstate delivery";
-    }
+    return {
+      text: `${timeframe.min} - ${timeframe.max}`,
+      description: timeframe.description,
+      icon,
+      zone: timeframe.zone,
+    };
   };
 
   const getCancelModalTitle = () => {
@@ -244,6 +274,8 @@ export default function OrdersScreen() {
     const isAdmin = user?.role === "admin";
 
     if (order.status === "running") {
+      const deliveryInfo = getDeliveryTimeframeInfo(order);
+      
       return (
         <View style={styles.actionsContainer}>
           {isBuyer && (
@@ -273,14 +305,30 @@ export default function OrdersScreen() {
             />
           )}
           
-          {/* Delivery Terms Notice */}
-          <View style={[styles.deliveryNotice, { backgroundColor: theme.backgroundSecondary }]}>
-            <Feather name="clock" size={16} color={theme.primary} />
+          {/* Updated Delivery Notice with dynamic location-based timeframe */}
+          <View style={[
+            styles.deliveryNotice, 
+            { 
+              backgroundColor: deliveryInfo.zone === "same_area" || deliveryInfo.zone === "same_city"
+                ? theme.success + "10"
+                : theme.backgroundSecondary 
+            }
+          ]}>
+            <Feather 
+              name={deliveryInfo.icon as any} 
+              size={16} 
+              color={deliveryInfo.zone === "same_area" || deliveryInfo.zone === "same_city" ? theme.success : theme.primary} 
+            />
             <View style={{ flex: 1, marginLeft: Spacing.sm }}>
               <ThemedText type="caption" style={{ fontWeight: "600" }}>
-                Expected Delivery: {getDeliveryTimeframe(order)}
+                Expected Delivery: {deliveryInfo.text}
               </ThemedText>
-              <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+              {deliveryInfo.description && (
+                <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+                  {deliveryInfo.description}
+                </ThemedText>
+              )}
+              <ThemedText type="caption" style={{ color: theme.warning, marginTop: 4, fontStyle: "italic" }}>
                 If not delivered within stated time, open a dispute for refund. T&C apply.
               </ThemedText>
             </View>
@@ -347,6 +395,7 @@ export default function OrdersScreen() {
         <OrderCard order={order} onPress={() => handleViewOrderDetails(order)} />
       </Pressable>
       {renderOrderActions(order)}
+      
     </View>
   );
 

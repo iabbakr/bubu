@@ -513,6 +513,8 @@ export default function SupportChatScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 110,
+    
   },
   centerContainer: {
     flex: 1,
