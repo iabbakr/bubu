@@ -17,6 +17,8 @@ import {
 } from "firebase/firestore";
 import { ProfessionalType, User } from "./firebaseService";
 
+
+
 export interface Professional extends User {
   professionalType: ProfessionalType;
   specialization?: string;

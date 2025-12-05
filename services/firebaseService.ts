@@ -36,6 +36,7 @@ export type UserRole =
 export type ProfessionalType = 
   | "doctor" 
   | "pharmacist" 
+  | "therapist"
   | "dentist" 
   | "lawyer";
 
@@ -77,6 +78,7 @@ export interface User {
   assignedBy?: string;                // UID of admin who assigned role
   assignedAt?: number;                // Timestamp of role assignment
   permissions?: string[];   
+  imageUrl?: string;
 
 }
 
@@ -165,6 +167,8 @@ export interface Transaction {
   timestamp: number;
   status?: "pending" | "completed";
 }
+
+
 
 export interface Coupon {
   code: string;

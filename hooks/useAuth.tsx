@@ -47,6 +47,7 @@ export interface UserData {
   businessPhone?: string;
   sellerCategory?: "supermarket" | "pharmacy";
   referralBonus?: number;
+  imageUrl?: string;
   
   // ✅ NEW: Role-specific fields
   assignedState?: string;              // For state managers

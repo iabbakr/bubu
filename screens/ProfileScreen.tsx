@@ -159,8 +159,8 @@ export default function ProfileScreen() {
           {renderMenuItem("heart", i18n.t("wishlist"), () => navigation.navigate("Wishlist"))}
         </View>
 
-        {/* Business Section (for Sellers/Admins) */}
-        {(user.role === "seller" || user.role === "admin") && (
+        {/* Business Section */}
+        {(user.role === "seller" || user.role === "admin" || user.role === "professional") && (
           <View style={styles.menuSection}>
             <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
               {i18n.t("business")}
@@ -175,8 +175,16 @@ export default function ProfileScreen() {
               i18n.t("admin_panel"), 
               () => navigation.navigate("AdminPanel" as never)
             )}
+            {user.role === "professional" && renderMenuItem(
+              "activity", 
+              "Professional Dashboard", 
+              () => navigation.navigate("ProfessionalDashboard"),
+              true,
+              `${user.professionalType || "Healthcare"} • ${user.specialization || "Set profile"}`
+            )}
           </View>
         )}
+
         // Add this section in ProfileScreen after the Business section
 {(user.role === "state_manager_1" || user.role === "state_manager_2") && (
   <View style={styles.menuSection}>

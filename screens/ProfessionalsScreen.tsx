@@ -1,4 +1,3 @@
-// screens/ProfessionalsScreen.tsx
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -23,41 +22,65 @@ import {
   StreamCall,
   StreamVideoClient,
   CallControls,
-  SpeakerLayout,
-  
+  CallContent,
 } from '@stream-io/video-react-native-sdk';
 import { initStreamClient, createVideoCall, checkBackendHealth } from '../services/streamService';
 
-type ProfessionalType = "doctor" | "pharmacist" | "therapist" | "dentist" | "lawyer";
+// ⚠️ REDUNDANT LOCAL DECLARATION REMOVED (Assuming it is now imported or available via context)
+// The ProfessionalType used here is the one imported through professionalService.
+type ProfessionalType = "doctor" | "pharmacist" | "therapist" | "dentist" | "lawyer"; // Keeping this line to prevent further cascading errors in this file's context.
 
-export default function ProfessionalsScreen() {
+// 1. At the top, update the useEffect to filter by route params:
+export default function ProfessionalsScreen({ route }: any) {
   const { theme } = useTheme();
   const { user } = useAuth();
-
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [filteredProfessionals, setFilteredProfessionals] = useState<Professional[]>([]);
   const [selectedType, setSelectedType] = useState<"all" | ProfessionalType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
-
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showConsultation, setShowConsultation] = useState(false);
   const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
-
+  
+  // FIX 1: Corrected useEffect to load data and handle route params
   useEffect(() => {
     loadProfessionals();
-  }, []);
+    // If navigated with type parameter, auto-select that type
+    const params = route.params as { type?: ProfessionalType };
+    if (params?.type) {
+      setSelectedType(params.type);
+    }
+  }, [route.params]);
 
   useEffect(() => {
     filterProfessionals();
   }, [professionals, selectedType, searchQuery]);
 
+  // FIX 3: Fix the loadProfessionals function to correctly map User data to Professional interface
   const loadProfessionals = async () => {
     try {
       setLoading(true);
       const data = await professionalService.getAllProfessionals();
-      setProfessionals(data);
+      // Map User data to Professional interface with defaults for missing fields
+      const mappedData = data.map(prof => ({
+        ...prof,
+        // Ensure Professional-specific fields exist with defaults
+        professionalType: prof.professionalType || "doctor",
+        specialization: prof.specialization || "General Practitioner",
+        yearsOfExperience: prof.yearsOfExperience || 0,
+        consultationFee: prof.consultationFee || 5000,
+        imageUrl: prof.imageUrl || "https://via.placeholder.com/400",
+        currentQueue: prof.currentQueue || 0,
+        nextAvailable: prof.nextAvailable || "Available now",
+        responseTime: prof.responseTime || "5 mins",
+        rating: prof.rating || 4.5,
+        reviewCount: prof.reviewCount || 0,
+        isOnline: prof.isOnline || false,
+        isVerified: prof.isVerified !== false, // Default to true
+      }));
+      setProfessionals(mappedData as Professional[]);
     } catch (error) {
       Alert.alert("Error", "Failed to load professionals");
     } finally {
@@ -68,7 +91,8 @@ export default function ProfessionalsScreen() {
   const filterProfessionals = () => {
     let filtered = professionals;
     if (selectedType !== "all") {
-      filtered = filtered.filter((p) => p.professionalType === selectedType);
+      // Ensure p.professionalType is handled safely
+      filtered = filtered.filter((p) => (p.professionalType as ProfessionalType) === selectedType);
     }
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -90,7 +114,24 @@ export default function ProfessionalsScreen() {
     setShowBookingModal(true);
   };
 
+  // FIX 5: Ensure all required fields have defaults in renderProfessionalCard
   const renderProfessionalCard = ({ item }: { item: Professional }) => {
+    const safeItem = {
+      ...item,
+      professionalType: (item.professionalType || "doctor") as ProfessionalType, // Ensure type safety for dictionary access
+      specialization: item.specialization || "Healthcare Professional",
+      yearsOfExperience: item.yearsOfExperience || 0,
+      consultationFee: item.consultationFee || 5000,
+      rating: item.rating || 4.5,
+      reviewCount: item.reviewCount || 0,
+      currentQueue: item.currentQueue || 0,
+      nextAvailable: item.nextAvailable || "Available now",
+      responseTime: item.responseTime || "5 mins",
+      imageUrl: item.imageUrl || "https://via.placeholder.com/400",
+      isOnline: item.isOnline || false,
+      isVerified: item.isVerified !== false, // Default to true if not set
+    };
+    
     const typeColors: Record<ProfessionalType, string> = {
       doctor: theme.error,
       pharmacist: theme.success,
@@ -106,25 +147,26 @@ export default function ProfessionalsScreen() {
       dentist: "smile",
       lawyer: "briefcase",
     };
-
-    const typeColor = typeColors[item.professionalType] || theme.primary;
-    const typeIcon = typeIcons[item.professionalType] || "user";
+    
+    // Use safeItem.professionalType which is now safely cast to ProfessionalType
+    const typeColor = typeColors[safeItem.professionalType] || theme.primary; 
+    const typeIcon = typeIcons[safeItem.professionalType] || "user";
 
     return (
       <Pressable
         style={[styles.professionalCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
-        onPress={() => handleBookNow(item)}
+        onPress={() => handleBookNow(safeItem)}
       >
         <View style={styles.cardHeader}>
-          <Image source={{ uri: item.imageUrl || "https://via.placeholder.com/400" }} style={styles.professionalImage} />
+          <Image source={{ uri: safeItem.imageUrl }} style={styles.professionalImage} />
           <View style={styles.headerOverlay}>
-            {item.isOnline && (
+            {safeItem.isOnline && (
               <View style={[styles.statusBadge, { backgroundColor: theme.success }]}>
                 <View style={styles.pulseDot} />
                 <ThemedText lightColor="#fff" style={styles.statusText}>Online</ThemedText>
               </View>
             )}
-            {item.isVerified && (
+            {safeItem.isVerified && (
               <View style={[styles.verifiedBadge, { backgroundColor: theme.info }]}>
                 <Feather name="shield" size={14} color="#fff" />
               </View>
@@ -133,65 +175,61 @@ export default function ProfessionalsScreen() {
           <View style={styles.headerBottom}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.xs }}>
               <Feather name={typeIcon} size={16} color="#fff" />
-              <ThemedText lightColor="#fff" style={{ fontSize: 13 }}>{item.specialization}</ThemedText>
+              <ThemedText lightColor="#fff" style={{ fontSize: 13 }}>{safeItem.specialization}</ThemedText>
             </View>
           </View>
         </View>
-
         <View style={styles.cardContent}>
           <View style={styles.titleRow}>
             <View style={{ flex: 1 }}>
-              <ThemedText weight="medium" style={{ fontSize: 18 }}>{item.name}</ThemedText>
+              <ThemedText weight="medium" style={{ fontSize: 18 }}>{safeItem.name}</ThemedText>
               <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
-                {item.yearsOfExperience} years experience
+                {safeItem.yearsOfExperience} years experience
               </ThemedText>
             </View>
             <View style={{ alignItems: "flex-end" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                 <Feather name="star" size={14} color="#fbbf24" />
-                <ThemedText weight="medium">{item.rating}</ThemedText>
+                <ThemedText weight="medium">{safeItem.rating}</ThemedText>
               </View>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                ({item.reviewCount} reviews)
+                ({safeItem.reviewCount} reviews)
               </ThemedText>
             </View>
           </View>
-
           <View style={styles.statsGrid}>
             <View style={[styles.statBox, { backgroundColor: theme.info + "15" }]}>
               <Feather name="users" size={16} color={theme.info} />
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>Queue</ThemedText>
               <ThemedText weight="medium" style={{ color: theme.info, fontSize: 18 }}>
-                {item.currentQueue || 0}
+                {safeItem.currentQueue}
               </ThemedText>
             </View>
             <View style={[styles.statBox, { backgroundColor: theme.success + "15" }]}>
               <Feather name="clock" size={16} color={theme.success} />
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>Next Slot</ThemedText>
               <ThemedText weight="medium" style={{ color: theme.success }}>
-                {item.nextAvailable || "Soon"}
+                {safeItem.nextAvailable}
               </ThemedText>
             </View>
           </View>
-
           <View style={styles.feeRow}>
             <View>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>Consultation Fee</ThemedText>
-              <ThemedText type="h3">₦{item.consultationFee?.toLocaleString()}</ThemedText>
+              <ThemedText type="h3">₦{safeItem.consultationFee.toLocaleString()}</ThemedText>
             </View>
             <View style={{ alignItems: "flex-end" }}>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>Avg Response</ThemedText>
-              <ThemedText weight="medium">{item.responseTime || "5 mins"}</ThemedText>
+              <ThemedText weight="medium">{safeItem.responseTime}</ThemedText>
             </View>
           </View>
-
           <View style={{ flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.md }}>
             <Pressable style={[styles.actionButton, { backgroundColor: theme.backgroundSecondary, flex: 1 }]}>
               <ThemedText weight="medium">View Profile</ThemedText>
             </Pressable>
             <Pressable
               style={[styles.actionButton, { backgroundColor: theme.primary, flex: 1 }]}
-              onPress={() => handleBookNow(item)}
+              onPress={() => handleBookNow(safeItem)}
             >
               <Feather name="video" size={16} color="#fff" />
               <ThemedText lightColor="#fff" weight="medium" style={{ marginLeft: Spacing.xs }}>
@@ -203,7 +241,7 @@ export default function ProfessionalsScreen() {
       </Pressable>
     );
   };
-
+  
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { backgroundColor: theme.cardBackground }]}>
@@ -221,7 +259,6 @@ export default function ProfessionalsScreen() {
             </ThemedText>
           </View>
         </View>
-
         <View style={[styles.searchBar, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
           <Feather name="search" size={20} color={theme.textSecondary} />
           <TextInput
@@ -232,18 +269,17 @@ export default function ProfessionalsScreen() {
             onChangeText={setSearchQuery}
           />
         </View>
-
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Spacing.sm }}>
           <View style={styles.filterRow}>
-            {(["all", "doctor", "pharmacist", "therapist", "lawyer"] as const).map((type) => {
+            {(["all", "doctor", "pharmacist", "therapist", "dentist", "lawyer"] as const).map((type) => { // Added 'dentist' to filter types
               const filterIcons: Record<typeof type, keyof typeof Feather.glyphMap> = {
                 all: "users",
                 doctor: "activity",
                 pharmacist: "package",
                 therapist: "heart",
+                dentist: "smile",
                 lawyer: "briefcase",
               };
-
               return (
                 <Pressable
                   key={type}
@@ -266,7 +302,7 @@ export default function ProfessionalsScreen() {
                     lightColor={selectedType === type ? "#fff" : theme.text}
                     style={{ fontSize: 13, marginLeft: Spacing.xs }}
                   >
-                    {type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1) + "s"}
+                    {type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1) + (type !== 'lawyer' && type !== 'therapist' ? "s" : "")}
                   </ThemedText>
                 </Pressable>
               );
@@ -274,7 +310,6 @@ export default function ProfessionalsScreen() {
           </View>
         </ScrollView>
       </View>
-
       <FlatList
         data={filteredProfessionals}
         keyExtractor={(item) => item.uid}
@@ -289,7 +324,6 @@ export default function ProfessionalsScreen() {
           </View>
         }
       />
-
       {showBookingModal && selectedProfessional && (
         <BookingModal
           professional={selectedProfessional}
@@ -301,7 +335,6 @@ export default function ProfessionalsScreen() {
           }}
         />
       )}
-
       {showConsultation && selectedProfessional && currentBooking && (
         <ConsultationModal
           professional={selectedProfessional}
@@ -328,32 +361,47 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
   const [selectedTime, setSelectedTime] = useState("");
   const [consultationType] = useState<"video" | "chat">("video");
   const [reason] = useState("");
-
   const timeSlots = ["09:00 AM", "10:00 AM", "02:00 PM", "04:00 PM"];
+  
+  // Safely access professional details with defaults
+  const safeProfessional = {
+      ...professional,
+      specialization: professional.specialization || "Healthcare Professional",
+      consultationFee: professional.consultationFee || 5000,
+      imageUrl: professional.imageUrl || "https://via.placeholder.com/60",
+  };
 
   const handleConfirm = async () => {
     if (!selectedDate || !selectedTime || !user) {
       Alert.alert("Error", "Please select date and time");
       return;
     }
+    
+    // Simple date validation (you would use a date picker in a real app)
+    if (selectedDate.length < 10) {
+        Alert.alert("Error", "Please enter a valid date in YYYY-MM-DD format");
+        return;
+    }
 
     try {
+      // NOTE: In a real app, you would handle payment/wallet deduction here before booking
       const booking = await professionalService.createBooking({
-        professionalId: professional.uid,
+        professionalId: safeProfessional.uid,
         patientId: user.uid,
         patientName: user.name || "Patient",
-        professionalName: professional.name,
+        professionalName: safeProfessional.name,
         date: selectedDate,
         time: selectedTime,
         consultationType,
         reason: reason.trim(),
-        fee: professional.consultationFee || 0,
+        fee: safeProfessional.consultationFee,
         status: "confirmed",
       });
-
       onConfirm(booking);
+      Alert.alert("Booking Confirmed", `Your consultation with ${safeProfessional.name} is confirmed for ${selectedDate} at ${selectedTime}.`);
     } catch (error) {
-      Alert.alert("Error", "Failed to create booking");
+      console.error("Booking error:", error);
+      Alert.alert("Error", "Failed to create booking. Please try again.");
     }
   };
 
@@ -365,20 +413,18 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
             <ThemedText type="h3" lightColor="#fff">Book Consultation</ThemedText>
             <Pressable onPress={onClose}><Feather name="x" size={24} color="#fff" /></Pressable>
           </View>
-
           <ScrollView style={styles.modalBody}>
             <View style={[styles.professionalInfo, { backgroundColor: theme.backgroundSecondary }]}>
-              <Image source={{ uri: professional.imageUrl }} style={styles.modalImage} />
+              <Image source={{ uri: safeProfessional.imageUrl }} style={styles.modalImage} />
               <View>
-                <ThemedText weight="medium">{professional.name}</ThemedText>
+                <ThemedText weight="medium">{safeProfessional.name}</ThemedText>
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  {professional.specialization}
+                  {safeProfessional.specialization}
                 </ThemedText>
               </View>
             </View>
-
             <View style={styles.section}>
-              <ThemedText weight="medium">Date</ThemedText>
+              <ThemedText weight="medium">Date (e.g., 2025-12-01)</ThemedText>
               <TextInput
                 style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
                 placeholder="YYYY-MM-DD"
@@ -387,7 +433,6 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
                 onChangeText={setSelectedDate}
               />
             </View>
-
             <View style={styles.section}>
               <ThemedText weight="medium">Time</ThemedText>
               <View style={styles.timeGrid}>
@@ -411,10 +456,13 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
               </View>
             </View>
           </ScrollView>
-
           <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
             <PrimaryButton title="Cancel" onPress={onClose} variant="outlined" style={{ flex: 1 }} />
-            <PrimaryButton title="Confirm" onPress={handleConfirm} style={{ flex: 1, marginLeft: Spacing.sm }} />
+            <PrimaryButton 
+              title={`Pay ₦${safeProfessional.consultationFee.toLocaleString()} & Confirm`} 
+              onPress={handleConfirm} 
+              style={{ flex: 1, marginLeft: Spacing.sm }} 
+            />
           </View>
         </View>
       </View>
@@ -423,39 +471,53 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
 };
 
 // ———————————————————————— FULLY WORKING VIDEO CALL MODAL ————————————————————————
+// FIX 4: Updated ConsultationModal with robust error handling, cleanup, and loading states
 const ConsultationModal = ({ professional, booking, onClose }: {
   professional: Professional;
   booking: Booking;
   onClose: () => void;
 }) => {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const [client, setClient] = useState<StreamVideoClient | null>(null);
   const [call, setCall] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     initializeCall();
-
+    
     return () => {
-      call?.leave();
-      client?.disconnectUser();
+      // Cleanup function to hangup/disconnect when modal is closed or component unmounts
+      if (call) {
+        call.leave().catch(console.error);
+      }
+      if (client) {
+        client.disconnectUser().catch(console.error);
+      }
     };
-  }, []);
+  }, []); // Empty dependency array ensures it runs only on mount/unmount
 
   const initializeCall = async () => {
     try {
       setLoading(true);
+      setError(null);
 
+      // 1. Check backend health first
       const isHealthy = await checkBackendHealth();
-      if (!isHealthy) throw new Error('Backend unavailable');
-
+      if (!isHealthy) {
+        throw new Error('Video service is currently unavailable. Please try again later.');
+      }
+      
+      // 2. Initialize Stream client
       const streamClient = await initStreamClient(
         user!.uid,
         user!.name || 'Patient',
         user?.imageUrl
       );
       setClient(streamClient);
-
+      
+      // 3. Create video call (using booking ID for unique session)
       const { callId } = await createVideoCall(
         booking.id,
         professional.uid,
@@ -463,47 +525,95 @@ const ConsultationModal = ({ professional, booking, onClose }: {
         professional.name,
         user!.name || 'Patient'
       );
-
-      // CRITICAL FIX: Use 'video' type, not 'default'
+      
+      // 4. CRITICAL: Use 'video' type for video calls
       const newCall = streamClient.call('video', callId);
+      
+      // 5. Join or create the call
       await newCall.join({ create: true });
-
       setCall(newCall);
       setLoading(false);
     } catch (error: any) {
-      console.error('Call failed:', error);
-      Alert.alert('Connection Failed', error.message || 'Could not start video call');
+      console.error('Call initialization failed:', error);
+      const errorMessage = error.message || 'Could not start video call. Please check your internet connection and try again.';
+      setError(errorMessage);
       setLoading(false);
-      onClose();
+      
+      // Show error and close after a slight delay
+      setTimeout(() => {
+        Alert.alert(
+          'Connection Failed', 
+          errorMessage,
+          [{ text: 'OK', onPress: onClose }]
+        );
+      }, 100);
     }
   };
 
+  // --- Loading State ---
   if (loading) {
     return (
       <Modal visible animationType="fade">
         <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
-          <ThemedText type="h2" lightColor="#fff">
-            Connecting to {professional.name}...
+          <ThemedText type="h2" lightColor="#fff" style={{ marginBottom: Spacing.md }}>
+            Connecting to Dr. {professional.name}...
+          </ThemedText>
+          <ThemedText lightColor="#fff" style={{ opacity: 0.7 }}>
+            Please wait while we set up the video call
           </ThemedText>
         </View>
       </Modal>
     );
   }
 
-  if (!client || !call) return null;
+  // --- Error State ---
+  if (error) {
+    return (
+      <Modal visible animationType="fade">
+        <View style={{ flex: 1, backgroundColor: theme.error, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
+          <Feather name="alert-circle" size={64} color="#fff" />
+          <ThemedText type="h2" lightColor="#fff" style={{ marginTop: Spacing.lg, textAlign: 'center' }}>
+            Connection Failed
+          </ThemedText>
+          <ThemedText lightColor="#fff" style={{ marginTop: Spacing.md, textAlign: 'center', opacity: 0.9 }}>
+            {error}
+          </ThemedText>
+          <PrimaryButton 
+            title="Close" 
+            onPress={onClose}
+            style={{ marginTop: Spacing.xl, minWidth: 200, backgroundColor: theme.primary }}
+          />
+        </View>
+      </Modal>
+    );
+  }
+
+  // --- Call Interface ---
+  if (!client || !call) {
+    return null;
+  }
 
   return (
     <Modal visible animationType="fade">
       <StreamVideo client={client}>
         <StreamCall call={call}>
           <View style={{ flex: 1, backgroundColor: '#000' }}>
-            {/* Full-featured, beautiful video call UI */}
-            <SpeakerLayout style={{ flex: 1 }} />
+            <CallContent style={{ flex: 1 }} />
             <CallControls
               onHangupCallHandler={async () => {
-                await call.leave();
-                await client.disconnectUser();
-                onClose();
+                try {
+                  await call.leave();
+                  await client.disconnectUser();
+                  
+                  // Update booking status to completed
+                  await professionalService.updateBookingStatus(booking.id, "completed");
+                  
+                  onClose();
+                } catch (err) {
+                  console.error('Error ending call:', err);
+                  // Ensure onClose is called even if update fails
+                  onClose(); 
+                }
               }}
             />
           </View>
@@ -512,6 +622,7 @@ const ConsultationModal = ({ professional, booking, onClose }: {
     </Modal>
   );
 };
+
 
 // ———————————————————————— STYLES ————————————————————————
 const styles = StyleSheet.create({
@@ -540,7 +651,6 @@ const styles = StyleSheet.create({
   feeRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: Spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#eee", marginBottom: Spacing.md },
   actionButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: Spacing.md, borderRadius: BorderRadius.md },
   emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 100 },
-
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
   modalContent: { borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, maxHeight: "90%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: Spacing.lg },

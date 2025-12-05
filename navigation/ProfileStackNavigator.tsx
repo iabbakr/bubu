@@ -34,6 +34,7 @@ import CartScreen from "@/screens/CartScreen";
 import AdminRoleManagement from "../screens/AdminRoleManagement";
 import StateManagerDashboard from "../screens/StateManagerDashboard";
 import WishlistScreen from "@/screens/WishlistScreen";
+import ProfessionalDashboard from "@/screens/ProfessionalDashboardScreen";
 
 export type ProfileStackParamList = {
   Profile: undefined;
@@ -51,6 +52,7 @@ export type ProfileStackParamList = {
   NotificationSetting: undefined;
   AdminDispute: { orderId: string };
   SupportChat: undefined;
+  ProfessionalDashboard: undefined;
   AdminSupportDashboard: undefined;
   AdminSupportChat: { chatId: string };
   HelpCenter: undefined;
@@ -110,6 +112,15 @@ export default function ProfileStackNavigator() {
             component={WishlistScreen}
             options={{
               title: i18n.t("wishlist"),
+              headerBackTitle: "Back",
+            }}
+          />
+
+          <Stack.Screen
+            name="ProfessionalDashboard"
+            component={ProfessionalDashboard}
+            options={{
+              title: "Professional Dashboard",
               headerBackTitle: "Back",
             }}
           />
