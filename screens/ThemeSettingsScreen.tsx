@@ -14,48 +14,32 @@ const themes = [
 ];
 
 export default function ThemeSettingsScreen() {
-  const { theme, toggleTheme, isDark } = useTheme();
+  const { theme, toggleTheme, isDark } = useTheme(); 
   const { user } = useAuth();
-  const [selectedTheme, setSelectedTheme] = useState(isDark ? "dark" : "light");
-
-  useEffect(() => {
-    loadTheme();
-  }, []);
-
-  const loadTheme = async () => {
-    if (!user) return;
-    try {
-      const settings = await settingsService.getUserSettings(user.uid);
-      if (settings.theme) {
-        setSelectedTheme(settings.theme);
-        toggleTheme(settings.theme === "dark");
-      }
-    } catch (err) {
-      console.error("Failed to load theme:", err);
-    }
-  };
+  
+  
 
   const selectTheme = async (code: string) => {
     if (!user) return;
 
-    setSelectedTheme(code);
+    
     toggleTheme(code === "dark");
 
     try {
       await settingsService.updateUserSettings(user.uid, { theme: code });
-      Alert.alert("Success", `Theme changed to ${themes.find(t => t.code === code)?.label}`);
+      //Alert.alert("Success", `Theme changed to ${themes.find(t => t.code === code)?.label}`);
     } catch (err) {
       console.error("Failed to save theme:", err);
       Alert.alert("Error", "Failed to change theme.");
     }
   };
 
+  const currentThemeCode = isDark ? "dark" : "light";
+
   return (
     <ScreenScrollView>
       <View style={styles.container}>
-        <ThemedText type="h2" style={{ marginBottom: Spacing.xl }}>
-          Select Theme
-        </ThemedText>
+        
 
         {themes.map(t => (
           <Pressable
@@ -67,7 +51,7 @@ export default function ThemeSettingsScreen() {
             ]}
           >
             <ThemedText style={{ flex: 1 }}>{t.label}</ThemedText>
-            {selectedTheme === t.code && <ThemedText style={{ color: theme.primary }}>✓</ThemedText>}
+              {currentThemeCode === t.code && <ThemedText style={{ color: theme.primary }}>✓</ThemedText>}
           </Pressable>
         ))}
       </View>

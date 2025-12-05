@@ -1,4 +1,3 @@
-
 export type SellerStackParamList = {
   SellerDashboard: undefined;
   AddProduct: undefined;
@@ -8,16 +7,10 @@ export type SellerStackParamList = {
   OrderDetail: { orderId: string };      // <-- add this
 };
 
-
-
-
 export interface Location {
   state: string;
   city: string;
 }
-
-
-
 
 export type UserRole = "admin" | "seller" | "buyer";
 
@@ -121,5 +114,4 @@ export interface Coupon {
   expiresAt: number;
   usedBy: string[];
 }
-
 

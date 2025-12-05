@@ -1,3 +1,4 @@
+// hooks/useAuth.tsx (Updated AuthContext)
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "../lib/firebase";
 import {
@@ -10,9 +11,23 @@ import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from "firebase/fi
 import { Location } from "../types/location";
 import { soundManager } from "@/lib/soundManager";
 
-export type UserRole = "admin" | "seller" | "buyer";
+// ✅ Enhanced UserRole to include all special roles
+export type UserRole = 
+  | "admin" 
+  | "seller" 
+  | "buyer"
+  | "state_manager_1"
+  | "state_manager_2"
+  | "support_agent"
+  | "professional";
 
-// This matches exactly what is saved in Firestore (from firebaseService)
+export type ProfessionalType = 
+  | "doctor" 
+  | "pharmacist" 
+  | "dentist" 
+  | "lawyer";
+
+// ✅ Enhanced UserData with all role-specific fields
 export interface UserData {
   uid: string;
   email: string;
@@ -27,11 +42,26 @@ export interface UserData {
   hasCompletedBusinessProfile?: boolean;
   location?: Location;
   createdAt: number;
-  businessName?: string;        // ← Now optional
-  businessAddress?: string;     // ← optional
-  businessPhone?: string;       // ← optional
+  businessName?: string;
+  businessAddress?: string;
+  businessPhone?: string;
   sellerCategory?: "supermarket" | "pharmacy";
   referralBonus?: number;
+  
+  // ✅ NEW: Role-specific fields
+  assignedState?: string;              // For state managers
+  managerLevel?: 1 | 2;               // Manager level (I or II)
+  professionalType?: ProfessionalType; // For professionals
+  professionalLicense?: string;        // Professional license number
+  specialization?: string;             // For doctors/dentists
+  yearsOfExperience?: number;         // For professionals
+  consultationFee?: number;           // For professionals
+  availability?: string[];            // Available days for professionals
+  isVerified?: boolean;               // Verification status for professionals
+  isActive?: boolean;                 // Account active status
+  assignedBy?: string;                // UID of admin who assigned role
+  assignedAt?: number;                // Timestamp of role assignment
+  permissions?: string[];             // Specific permissions array
 }
 
 // Utility to generate a unique referral code
@@ -51,7 +81,7 @@ interface AuthContextType {
   signUp: (
     email: string,
     password: string,
-    role: UserRole,
+    role: "admin" | "seller" | "buyer", // Only basic roles can be created via signup
     name: string,
     phone?: string,
     gender?: "male" | "female" | "other",
@@ -96,7 +126,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signUp = async (
     email: string,
     password: string,
-    role: UserRole,
+    role: "admin" | "seller" | "buyer",
     name: string,
     phone?: string,
     gender?: "male" | "female" | "other",
@@ -117,7 +147,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         myReferralCode,
         referralBonus: 0,
         hasCompletedFirstPurchase: false,
-        hasCompletedBusinessProfile: role === "seller" ? false : true, // buyers don't need it
+        hasCompletedBusinessProfile: role === "seller" ? false : true,
+        isActive: true, // ✅ All new users are active
         createdAt: Date.now(),
       };
 
@@ -222,3 +253,4 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
+

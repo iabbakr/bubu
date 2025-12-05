@@ -10,6 +10,7 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { soundManager } from '../lib/soundManager';
 import { getDeliveryDescription, getDeliveryIcon, calculateDeliveryTimeframe } from "../utils/locationUtils";
+import { PrescriptionViewer } from "../components/PrescriptionViewer";
 
 type RouteParams = { orderId: string };
 type OrderTrackingStatus = "acknowledged" | "enroute" | "ready_for_pickup";
@@ -440,6 +441,45 @@ export default function OrderDetailScreen() {
             </View>
           ))}
         </View>
+
+        {/* Products with Prescriptions */}
+<View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+  <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
+    Order Items
+  </ThemedText>
+
+  {order.products.map((item, index) => (
+    <View key={index}>
+      <View style={styles.productItem}>
+        <View style={[styles.productIcon, { backgroundColor: theme.backgroundSecondary }]}>
+          <Feather name="box" size={20} color={theme.primary} />
+        </View>
+
+        <View style={{ flex: 1, marginLeft: Spacing.md }}>
+          <ThemedText weight="medium">{item.productName}</ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+            Quantity: {item.quantity} × ₦{item.price.toFixed(2)}
+          </ThemedText>
+        </View>
+
+        <ThemedText weight="bold" style={{ color: theme.primary }}>
+          ₦{(item.quantity * item.price).toFixed(2)}
+        </ThemedText>
+      </View>
+
+      {/* Show prescription if available */}
+      {item.prescriptionUrl && item.prescriptionFileName && (
+        <View style={{ marginLeft: Spacing["3xl"], marginRight: Spacing.md }}>
+          <PrescriptionViewer
+            prescriptionUrl={item.prescriptionUrl}
+            prescriptionFileName={item.prescriptionFileName}
+            productName={item.productName}
+          />
+        </View>
+      )}
+    </View>
+  ))}
+</View>
 
         {/* Seller Business Info */}
         <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>

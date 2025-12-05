@@ -33,6 +33,7 @@ import i18n from "@/lib/i18n";
 import CartScreen from "@/screens/CartScreen";
 import AdminRoleManagement from "../screens/AdminRoleManagement";
 import StateManagerDashboard from "../screens/StateManagerDashboard";
+import WishlistScreen from "@/screens/WishlistScreen";
 
 export type ProfileStackParamList = {
   Profile: undefined;
@@ -45,6 +46,7 @@ export type ProfileStackParamList = {
   EditProduct: { product: Product };
   MyProducts: undefined;
   MyOrders: undefined;
+  Wishlist: undefined;
   Theme: undefined;
   NotificationSetting: undefined;
   AdminDispute: { orderId: string };
@@ -57,8 +59,9 @@ export type ProfileStackParamList = {
   ChangePassword: undefined;
   ForgotPassword: undefined;
   AdminRole: undefined;
-  StateManagerDashboard: undefined;
+  
   AdminRoleManagement: undefined;
+  StateManagerDashboard: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -98,6 +101,15 @@ export default function ProfileStackNavigator() {
             component={AccountInfoScreen}
             options={{
               title: "Account Information",
+              headerBackTitle: "Back",
+            }}
+          />
+
+          <Stack.Screen
+            name="Wishlist"
+            component={WishlistScreen}
+            options={{
+              title: i18n.t("wishlist"),
               headerBackTitle: "Back",
             }}
           />

@@ -1,0 +1,594 @@
+// screens/ProfessionalsScreen.tsx
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  TextInput,
+  Image,
+  Modal,
+  ScrollView,
+  Alert,
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { ThemedText } from "../components/ThemedText";
+import { PrimaryButton } from "../components/PrimaryButton";
+import { useTheme } from "../hooks/useTheme";
+import { useAuth } from "../hooks/useAuth";
+import { Spacing, BorderRadius } from "../constants/theme";
+import { professionalService, Professional, Booking } from "../services/professionalService";
+import { StreamVideo, StreamCall } from '@stream-io/video-react-native-sdk';
+import { initStreamClient, createVideoCall } from '../services/streamService';
+
+type ProfessionalType = "doctor" | "pharmacist" | "therapist" | "dentist";
+
+export default function ProfessionalsScreen() {
+  const { theme } = useTheme();
+  const { user } = useAuth();
+
+  const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [filteredProfessionals, setFilteredProfessionals] = useState<Professional[]>([]);
+  const [selectedType, setSelectedType] = useState<"all" | ProfessionalType>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showConsultation, setShowConsultation] = useState(false);
+  const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
+
+  useEffect(() => {
+    loadProfessionals();
+  }, []);
+
+  useEffect(() => {
+    filterProfessionals();
+  }, [professionals, selectedType, searchQuery]);
+
+  const loadProfessionals = async () => {
+    try {
+      setLoading(true);
+      const data = await professionalService.getAllProfessionals();
+      setProfessionals(data);
+    } catch (error) {
+      Alert.alert("Error", "Failed to load professionals");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterProfessionals = () => {
+    let filtered = professionals;
+    if (selectedType !== "all") {
+      filtered = filtered.filter((p) => p.professionalType === selectedType);
+    }
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.name.toLowerCase().includes(query) ||
+          p.specialization?.toLowerCase().includes(query)
+      );
+    }
+    setFilteredProfessionals(filtered);
+  };
+
+  const handleBookNow = (professional: Professional) => {
+    if (!user) {
+      Alert.alert("Sign In Required", "Please sign in to book a consultation");
+      return;
+    }
+    setSelectedProfessional(professional);
+    setShowBookingModal(true);
+  };
+
+  const renderProfessionalCard = ({ item }: { item: Professional }) => {
+    const typeColors: Record<ProfessionalType, string> = {
+      doctor: theme.error,
+      pharmacist: theme.success,
+      therapist: theme.warning,
+      dentist: theme.info,
+    };
+    const typeIcons: Record<ProfessionalType, any> = {
+      doctor: "activity",
+      pharmacist: "package",
+      therapist: "heart",
+      dentist: "smile",
+    };
+
+    const typeColor = typeColors[item.professionalType] || theme.primary;
+    const typeIcon = typeIcons[item.professionalType] || "user";
+
+    return (
+      <Pressable
+        style={[styles.professionalCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+        onPress={() => handleBookNow(item)}
+      >
+        <View style={styles.cardHeader}>
+          <Image source={{ uri: item.imageUrl || "https://via.placeholder.com/400" }} style={styles.professionalImage} />
+          <View style={styles.headerOverlay}>
+            {item.isOnline && (
+              <View style={[styles.statusBadge, { backgroundColor: theme.success }]}>
+                <View style={styles.pulseDot} />
+                <ThemedText lightColor="#fff" style={styles.statusText}>Online</ThemedText>
+              </View>
+            )}
+            {item.isVerified && (
+              <View style={[styles.verifiedBadge, { backgroundColor: theme.info }]}>
+                <Feather name="shield" size={14} color="#fff" />
+              </View>
+            )}
+          </View>
+          <View style={styles.headerBottom}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.xs }}>
+              <Feather name={typeIcon} size={16} color="#fff" />
+              <ThemedText lightColor="#fff" style={{ fontSize: 13 }}>{item.specialization}</ThemedText>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.cardContent}>
+          <View style={styles.titleRow}>
+            <View style={{ flex: 1 }}>
+              <ThemedText weight="medium" style={{ fontSize: 18 }}>{item.name}</ThemedText>
+              <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+                {item.yearsOfExperience} years experience
+              </ThemedText>
+            </View>
+            <View style={{ alignItems: "flex-end" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Feather name="star" size={14} color="#fbbf24" />
+                <ThemedText weight="medium">{item.rating}</ThemedText>
+              </View>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                ({item.reviewCount} reviews)
+              </ThemedText>
+            </View>
+          </View>
+
+          <View style={styles.statsGrid}>
+            <View style={[styles.statBox, { backgroundColor: theme.info + "15" }]}>
+              <Feather name="users" size={16} color={theme.info} />
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>Queue</ThemedText>
+              <ThemedText weight="medium" style={{ color: theme.info, fontSize: 18 }}>
+                {item.currentQueue || 0}
+              </ThemedText>
+            </View>
+            <View style={[styles.statBox, { backgroundColor: theme.success + "15" }]}>
+              <Feather name="clock" size={16} color={theme.success} />
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>Next Slot</ThemedText>
+              <ThemedText weight="medium" style={{ color: theme.success }}>
+                {item.nextAvailable || "Soon"}
+              </ThemedText>
+            </View>
+          </View>
+
+          <View style={styles.feeRow}>
+            <View>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>Consultation Fee</ThemedText>
+              <ThemedText type="h3">₦{item.consultationFee?.toLocaleString()}</ThemedText>
+            </View>
+            <View style={{ alignItems: "flex-end" }}>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>Avg Response</ThemedText>
+              <ThemedText weight="medium">{item.responseTime || "5 mins"}</ThemedText>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.md }}>
+            <Pressable style={[styles.actionButton, { backgroundColor: theme.backgroundSecondary, flex: 1 }]}>
+              <ThemedText weight="medium">View Profile</ThemedText>
+            </Pressable>
+            <Pressable
+              style={[styles.actionButton, { backgroundColor: theme.primary, flex: 1 }]}
+              onPress={() => handleBookNow(item)}
+            >
+              <Feather name="video" size={16} color="#fff" />
+              <ThemedText lightColor="#fff" weight="medium" style={{ marginLeft: Spacing.xs }}>
+                Book Now
+              </ThemedText>
+            </Pressable>
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.header, { backgroundColor: theme.cardBackground }]}>
+        <View style={styles.headerContent}>
+          <View>
+            <ThemedText type="h2">Healthcare Professionals</ThemedText>
+            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+              Connect with verified experts
+            </ThemedText>
+          </View>
+          <View style={[styles.onlineBadge, { backgroundColor: theme.success + "20" }]}>
+            <Feather name="check-circle" size={14} color={theme.success} />
+            <ThemedText type="caption" weight="medium" style={{ color: theme.success }}>
+              {professionals.filter(p => p.isOnline).length} Online
+            </ThemedText>
+          </View>
+        </View>
+
+        <View style={[styles.searchBar, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
+          <Feather name="search" size={20} color={theme.textSecondary} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.text }]}
+            placeholder="Search by name or specialization..."
+            placeholderTextColor={theme.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Spacing.sm }}>
+          <View style={styles.filterRow}>
+            {(["all", "doctor", "pharmacist", "therapist"] as const).map((type) => (
+              <Pressable
+                key={type}
+                style={[
+                  styles.filterButton,
+                  {
+                    backgroundColor: selectedType === type ? theme.primary : theme.cardBackground,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={() => setSelectedType(type)}
+              >
+                <Feather
+                  name={type === "all" ? "users" : type === "doctor" ? "activity" : type === "pharmacist" ? "package" : "heart"}
+                  size={16}
+                  color={selectedType === type ? "#fff" : theme.text}
+                />
+                <ThemedText
+                  weight="medium"
+                  lightColor={selectedType === type ? "#fff" : theme.text}
+                  style={{ fontSize: 13, marginLeft: Spacing.xs }}
+                >
+                  {type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1) + "s"}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+
+      <FlatList
+        data={filteredProfessionals}
+        keyExtractor={(item) => item.uid}
+        renderItem={renderProfessionalCard}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Feather name="search" size={64} color={theme.textSecondary} />
+            <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
+              No professionals found
+            </ThemedText>
+          </View>
+        }
+      />
+
+      {showBookingModal && selectedProfessional && (
+        <BookingModal
+          professional={selectedProfessional}
+          onClose={() => setShowBookingModal(false)}
+          onConfirm={(booking) => {
+            setCurrentBooking(booking);
+            setShowBookingModal(false);
+            setShowConsultation(true);
+          }}
+        />
+      )}
+
+      {showConsultation && selectedProfessional && currentBooking && (
+        <ConsultationModal
+          professional={selectedProfessional}
+          booking={currentBooking}
+          onClose={() => setShowConsultation(false)}
+        />
+      )}
+    </View>
+  );
+}
+
+// ———————————————————————— BOOKING MODAL ————————————————————————
+const BookingModal = ({ professional, onClose, onConfirm }: {
+  professional: Professional;
+  onClose: () => void;
+  onConfirm: (booking: Booking) => void;
+}) => {
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedTime, setSelectedTime] = useState("");
+  const [consultationType, setConsultationType] = useState<"video" | "chat">("video");
+  const [reason, setReason] = useState("");
+
+  const timeSlots = ["09:00 AM", "10:00 AM", "02:00 PM", "04:00 PM"];
+
+  const handleConfirm = async () => {
+    if (!selectedDate || !selectedTime || !user) {
+      Alert.alert("Error", "Please select date and time");
+      return;
+    }
+
+    try {
+      const booking = await professionalService.createBooking({
+        professionalId: professional.uid,
+        patientId: user.uid,
+        patientName: user.name || "Patient",
+        professionalName: professional.name,
+        date: selectedDate,
+        time: selectedTime,
+        consultationType,
+        reason: reason.trim(),
+        fee: professional.consultationFee || 0,
+        status: "confirmed",
+      });
+
+      onConfirm(booking);
+    } catch (error) {
+      Alert.alert("Error", "Failed to create booking");
+    }
+  };
+
+  return (
+    <Modal visible animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: theme.cardBackground }]}>
+          <View style={[styles.modalHeader, { backgroundColor: theme.primary }]}>
+            <ThemedText type="h3" lightColor="#fff">Book Consultation</ThemedText>
+            <Pressable onPress={onClose}><Feather name="x" size={24} color="#fff" /></Pressable>
+          </View>
+
+          <ScrollView style={styles.modalBody}>
+            <View style={[styles.professionalInfo, { backgroundColor: theme.backgroundSecondary }]}>
+              <Image source={{ uri: professional.imageUrl }} style={styles.modalImage} />
+              <View>
+                <ThemedText weight="medium">{professional.name}</ThemedText>
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  {professional.specialization}
+                </ThemedText>
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <ThemedText weight="medium">Date</ThemedText>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={theme.textSecondary}
+                value={selectedDate}
+                onChangeText={setSelectedDate}
+              />
+            </View>
+
+            <View style={styles.section}>
+              <ThemedText weight="medium">Time</ThemedText>
+              <View style={styles.timeGrid}>
+                {timeSlots.map(time => (
+                  <Pressable
+                    key={time}
+                    style={[
+                      styles.timeSlot,
+                      { 
+                        backgroundColor: selectedTime === time ? theme.primary + "20" : theme.backgroundSecondary,
+                        borderColor: selectedTime === time ? theme.primary : theme.border
+                      }
+                    ]}
+                    onPress={() => setSelectedTime(time)}
+                  >
+                    <ThemedText weight="medium" style={{ color: selectedTime === time ? theme.primary : theme.text }}>
+                      {time}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+            <PrimaryButton title="Cancel" onPress={onClose} variant="outlined" style={{ flex: 1 }} />
+            <PrimaryButton title="Confirm" onPress={handleConfirm} style={{ flex: 1, marginLeft: Spacing.sm }} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ———————————————————————— VIDEO CALL WITH STREAM ————————————————————————
+const ConsultationModal = ({ professional, booking, onClose }: {
+  professional: Professional;
+  booking: Booking;
+  onClose: () => void;
+}) => {
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const [client, setClient] = useState<any>(null);
+  const [call, setCall] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    initializeCall();
+
+    return () => {
+      if (call) {
+        call.leave();
+      }
+      if (client) {
+        client.disconnectUser();
+      }
+    };
+  }, []);
+
+  const initializeCall = async () => {
+    try {
+      // Initialize Stream client
+      const streamClient = await initStreamClient(
+        user!.uid,
+        user!.name || 'Patient',
+        user?.imageUrl
+      );
+      setClient(streamClient);
+
+      // Create call channel
+      const { callId } = await createVideoCall(
+        booking.id,
+        professional.uid,
+        user!.uid,
+        professional.name,
+        user!.name || 'Patient'
+      );
+
+      // Create call instance
+      const newCall = streamClient.call('default', callId);
+      
+      // Join the call
+      await newCall.join({ create: true });
+      
+      setCall(newCall);
+      setLoading(false);
+
+    } catch (error) {
+      console.error('Call initialization error:', error);
+      Alert.alert('Call Failed', 'Could not connect to professional');
+      onClose();
+    }
+  };
+
+  const handleEndCall = async () => {
+    try {
+      if (call) {
+        await call.leave();
+      }
+      if (client) {
+        await client.disconnectUser();
+      }
+    } catch (error) {
+      console.error('Error ending call:', error);
+    }
+    onClose();
+  };
+
+  if (loading || !call) {
+    return (
+      <Modal visible animationType="slide">
+        <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+          <ThemedText type="h3">Connecting to {professional.name}...</ThemedText>
+        </View>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal visible animationType="slide">
+      <View style={{ flex: 1, backgroundColor: '#000' }}>
+        <StreamVideo client={client}>
+          <StreamCall call={call}>
+            {/* Stream provides pre-built UI components */}
+            <CallContent onEndCall={handleEndCall} professionalName={professional.name} />
+          </StreamCall>
+        </StreamVideo>
+      </View>
+    </Modal>
+  );
+};
+
+// Simple Call UI Component
+const CallContent = ({ onEndCall, professionalName }: { onEndCall: () => void; professionalName: string }) => {
+  const { theme } = useTheme();
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Professional name overlay */}
+      <View style={styles.callerNameOverlay}>
+        <ThemedText lightColor="#fff" style={{ fontSize: 18, fontWeight: "600" }}>
+          {professionalName}
+        </ThemedText>
+        <ThemedText lightColor="#fff">Connected</ThemedText>
+      </View>
+
+      {/* End call button */}
+      <View style={styles.callControls}>
+        <Pressable 
+          style={[styles.controlBtn, { backgroundColor: '#ef4444' }]} 
+          onPress={onEndCall}
+        >
+          <Feather name="phone-off" size={28} color="#fff" />
+        </Pressable>
+      </View>
+    </View>
+  );
+};
+
+// ———————————————————————— STYLES ————————————————————————
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: { padding: Spacing.lg, paddingBottom: Spacing.md, elevation: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  headerContent: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: Spacing.md },
+  onlineBadge: { flexDirection: "row", alignItems: "center", paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: BorderRadius.full },
+  searchBar: { flexDirection: "row", alignItems: "center", padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 1, marginBottom: Spacing.md },
+  searchInput: { flex: 1, marginLeft: Spacing.sm, fontSize: 16 },
+  filterRow: { flexDirection: "row", gap: Spacing.sm },
+  filterButton: { flexDirection: "row", alignItems: "center", paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md, borderWidth: 1 },
+  listContent: { padding: Spacing.lg },
+  professionalCard: { borderRadius: BorderRadius.lg, borderWidth: 1, marginBottom: Spacing.lg, overflow: "hidden" },
+  cardHeader: { height: 180, position: "relative" },
+  professionalImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  headerOverlay: { position: "absolute", top: Spacing.md, right: Spacing.md, flexDirection: "row", gap: Spacing.xs },
+  statusBadge: { flexDirection: "row", alignItems: "center", paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs, borderRadius: BorderRadius.full, gap: 4 },
+  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#fff" },
+  statusText: { fontSize: 11, fontWeight: "600" },
+  verifiedBadge: { width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  headerBottom: { position: "absolute", bottom: 0, left: 0, right: 0, padding: Spacing.md, backgroundColor: "rgba(0,0,0,0.6)" },
+  cardContent: { padding: Spacing.lg },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: Spacing.md },
+  statsGrid: { flexDirection: "row", gap: Spacing.sm, marginBottom: Spacing.md },
+  statBox: { flex: 1, padding: Spacing.md, borderRadius: BorderRadius.md, alignItems: "center" },
+  feeRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: Spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#eee", marginBottom: Spacing.md },
+  actionButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: Spacing.md, borderRadius: BorderRadius.md },
+  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 100 },
+
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  modalContent: { borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, maxHeight: "90%" },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: Spacing.lg },
+  modalBody: { padding: Spacing.lg },
+  professionalInfo: { flexDirection: "row", padding: Spacing.md, borderRadius: BorderRadius.md, gap: Spacing.md, marginBottom: Spacing.lg },
+  modalImage: { width: 60, height: 60, borderRadius: 30 },
+  section: { marginBottom: Spacing.lg },
+  input: { borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md, marginTop: Spacing.sm },
+  timeGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm, marginTop: Spacing.sm },
+  timeSlot: { padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 2, minWidth: "30%", alignItems: "center" },
+  modalFooter: { flexDirection: "row", padding: Spacing.lg, borderTopWidth: 1 },
+
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  callControls: { position: "absolute", bottom: 50, left: 0, right: 0, flexDirection: "row", justifyContent: "center", gap: 20 },
+  controlBtn: { width: 70, height: 70, borderRadius: 35, justifyContent: "center", alignItems: "center" },
+  callerNameOverlay: { position: "absolute", top: 60, left: 20, backgroundColor: "rgba(0,0,0,0.6)", padding: 12, borderRadius: 12, zIndex: 10 },
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

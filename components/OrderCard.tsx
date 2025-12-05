@@ -42,6 +42,8 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
     }
   };
 
+  
+
   const statusStyle = getStatusColor();
 
   return (
@@ -137,6 +139,7 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
           </View>
         )}
       </View>
+      
 
       {/* Dispute Badge */}
       {order.disputeStatus === "open" && (

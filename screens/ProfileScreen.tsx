@@ -156,7 +156,7 @@ export default function ProfileScreen() {
           )}
           {renderMenuItem("shopping-cart", i18n.t("cart"), () => navigation.navigate("Cart" as never))}
           {renderMenuItem("shopping-bag", i18n.t("order"), () => {})}
-          {renderMenuItem("heart", i18n.t("wishlist"), () => {})}
+          {renderMenuItem("heart", i18n.t("wishlist"), () => navigation.navigate("Wishlist"))}
         </View>
 
         {/* Business Section (for Sellers/Admins) */}

@@ -689,6 +689,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     padding: Spacing.lg,
+    paddingTop: 100,
   },
   countBadge: {
     minWidth: 40,

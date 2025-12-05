@@ -318,3 +318,57 @@ service cloud.firestore {
     }
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Prescriptions folder - authenticated users can upload their own prescriptions
+    match /prescriptions/{userId}/{allPaths=**} {
+      // Allow users to upload their own prescriptions
+      allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow users to read their own prescriptions
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow admins to read all prescriptions
+      allow read: if request.auth != null && 
+                    get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // Sellers can read prescriptions for their orders
+      allow read: if request.auth != null;
+    }
+    
+    // Products folder - sellers can upload product images
+    match /products/{sellerId}/{allPaths=**} {
+      // Allow sellers to upload product images
+      allow write: if request.auth != null && request.auth.uid == sellerId;
+      
+      // Anyone authenticated can read product images
+      allow read: if request.auth != null;
+    }
+    
+    // Default: deny all access to other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

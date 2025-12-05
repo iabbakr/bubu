@@ -13,13 +13,14 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { CartProvider } from "@/hooks/useCart";
 import { pushNotificationService } from "@/services/pushNotificationService";
 import { LanguageProvider } from "./context/LanguageContext";
-import { soundManager } from "./lib/soundManager";  // Correct path
+import { soundManager } from "./lib/soundManager";
 import { initI18n } from "./lib/i18n";
+import { ThemeProvider, useTheme } from "@/hooks/useTheme";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: false, // We use our own sounds
+    shouldPlaySound: false,
     shouldSetBadge: true,
   }),
 });
@@ -27,9 +28,8 @@ Notifications.setNotificationHandler({
 function NavigationWithNotifications() {
   const { user } = useAuth();
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
-
   const notificationListener = useRef<Notifications.Subscription | null>(null);
-const responseListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -37,7 +37,7 @@ const responseListener = useRef<Notifications.Subscription | null>(null);
     }
 
     notificationListener.current = Notifications.addNotificationReceivedListener(() => {
-      soundManager.play('signin'); // Optional: play sound when notification arrives
+      soundManager.play('signin');
     });
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -60,6 +60,18 @@ const responseListener = useRef<Notifications.Subscription | null>(null);
   );
 }
 
+// New component that uses useTheme INSIDE ThemeProvider
+function AppContent() {
+  const { isDark } = useTheme();
+
+  return (
+    <>
+      <NavigationWithNotifications />
+      <StatusBar style={isDark ? "light" : "dark"} />
+    </>
+  );
+}
+
 export default function App() {
   const [isI18nReady, setIsI18nReady] = useState(false);
 
@@ -67,10 +79,8 @@ export default function App() {
     initI18n().then(() => setIsI18nReady(true));
   }, []);
 
-  // Initialize and cleanup sounds
   useEffect(() => {
     soundManager.init();
-
     return () => {
       soundManager.unload();
     };
@@ -92,8 +102,9 @@ export default function App() {
             <AuthProvider>
               <CartProvider>
                 <LanguageProvider>
-                  <NavigationWithNotifications />
-                  <StatusBar style="dark" />
+                  <ThemeProvider>
+                    <AppContent />
+                  </ThemeProvider>
                 </LanguageProvider>
               </CartProvider>
             </AuthProvider>
@@ -108,5 +119,3 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   loading: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
 });
-
-

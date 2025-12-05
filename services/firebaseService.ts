@@ -17,6 +17,8 @@ import {
   where,
   onSnapshot,
   orderBy,
+  serverTimestamp,      // ← ADD THIS
+  FieldValue,
 } from "firebase/firestore";
 import { soundManager } from '../lib/soundManager';
 import { emailService } from "../lib/resend";
@@ -36,12 +38,6 @@ export type ProfessionalType =
   | "pharmacist" 
   | "dentist" 
   | "lawyer";
-
-export interface Location {
-  state: string;
-  city: string;
-  area: string;
-}
 
 export interface Location {
   state: string;
@@ -80,7 +76,7 @@ export interface User {
   isActive?: boolean;                 // Account active status
   assignedBy?: string;                // UID of admin who assigned role
   assignedAt?: number;                // Timestamp of role assignment
-  permissions?: string[];             // Specific permissions array
+  permissions?: string[];   
 
 }
 
@@ -111,6 +107,8 @@ export interface OrderItem {
   productName: string;
   quantity: number;
   price: number;
+  prescriptionUrl?: string | null;  // NEW: URL to uploaded prescription
+  prescriptionFileName?: string | null;
 }
 
 export interface Order {
@@ -188,7 +186,14 @@ const generateReferralCode = (length = 6) => {
   return code;
 };
 
+
+
 export const firebaseService = {
+
+    firestore: () => db,
+  FieldValue: {
+    serverTimestamp: () => serverTimestamp(),
+  },
   // -----------------------------
   // AUTH
   // -----------------------------
