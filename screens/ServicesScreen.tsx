@@ -8,41 +8,42 @@ import { Spacing, BorderRadius } from "../constants/theme";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ServicesStackParamList } from "@/navigation/ServicesStackNavigator";
+import i18n from "../lib/i18n"; // Import i18n
 
 const billServices = [
-  { id: "airtime", name: "Airtime", icon: "phone", screen: "Airtime", color: "#10b981" },
-  { id: "data", name: "Data", icon: "wifi", screen: "Data", color: "#3b82f6" },
-  { id: "electricity", name: "Electricity", icon: "zap", screen: "Electricity", color: "#f59e0b" },
-  { id: "cable", name: "Cable TV", icon: "tv", screen: "CableTV", color: "#8b5cf6" },
+  { id: "airtime", name: i18n.t("airtime"), icon: "phone", screen: "Airtime", color: "#10b981" },
+  { id: "data", name: i18n.t("data"), icon: "wifi", screen: "Data", color: "#3b82f6" },
+  { id: "electricity", name: i18n.t("electricity"), icon: "zap", screen: "Electricity", color: "#f59e0b" },
+  { id: "cable", name: i18n.t("cable_tv"), icon: "tv", screen: "CableTV", color: "#8b5cf6" },
 ];
 
 const professionalServices = [
   { 
     id: "doctor", 
-    name: "Doctor", 
+    name: i18n.t("talk_to_doctor"), // Reusing existing key
     icon: "activity", 
     screen: "Professionals",
     params: { type: "doctor" },
     color: "#ef4444",
-    description: "General practitioners"
+    description: i18n.t("general_practitioners")
   },
   { 
     id: "pharmacist", 
-    name: "Pharmacist", 
+    name: i18n.t("talk_to_pharmacist"), // Reusing existing key
     icon: "package", 
     screen: "Professionals",
     params: { type: "pharmacist" },
     color: "#10b981",
-    description: "Medication experts"
+    description: i18n.t("medication_experts")
   },
   { 
     id: "therapist", 
-    name: "Therapist", 
+    name: i18n.t("talk_to_therapist"), // Reusing existing key
     icon: "heart", 
     screen: "Professionals",
     params: { type: "therapist" },
     color: "#f59e0b",
-    description: "Mental health support"
+    description: i18n.t("mental_health_support")
   },
 ];
 
@@ -124,12 +125,12 @@ export default function ServicesScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View>
-            <ThemedText type="h3">Bills & Utilities</ThemedText>
+            <ThemedText type="h3">{i18n.t("bills_utility")}</ThemedText>
             <ThemedText
               type="caption"
               style={{ color: theme.textSecondary, marginTop: 2 }}
             >
-              Pay bills instantly
+              {i18n.t("pay_bills_instantly")}
             </ThemedText>
           </View>
         </View>
@@ -147,12 +148,12 @@ export default function ServicesScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View>
-            <ThemedText type="h3">Talk to Professionals</ThemedText>
+            <ThemedText type="h3">{i18n.t("talk_to_professional")}</ThemedText>
             <ThemedText
               type="caption"
               style={{ color: theme.textSecondary, marginTop: 2 }}
             >
-              Consult certified healthcare experts
+              {i18n.t("consult_certified_experts")}
             </ThemedText>
           </View>
         </View>
@@ -171,19 +172,19 @@ export default function ServicesScreen() {
           <View style={styles.featureItem}>
             <Feather name="video" size={16} color={theme.primary} />
             <ThemedText type="caption" style={{ marginLeft: Spacing.xs, flex: 1 }}>
-              Video consultation
+              {i18n.t("video_consultation")}
             </ThemedText>
           </View>
           <View style={styles.featureItem}>
             <Feather name="shield" size={16} color={theme.primary} />
             <ThemedText type="caption" style={{ marginLeft: Spacing.xs, flex: 1 }}>
-              Certified professionals
+              {i18n.t("certified_professionals")}
             </ThemedText>
           </View>
           <View style={styles.featureItem}>
             <Feather name="clock" size={16} color={theme.primary} />
             <ThemedText type="caption" style={{ marginLeft: Spacing.xs, flex: 1 }}>
-              24/7 availability
+              {i18n.t("availability_247")}
             </ThemedText>
           </View>
         </View>
@@ -196,7 +197,7 @@ export default function ServicesScreen() {
           type="caption"
           style={{ color: theme.textSecondary, marginLeft: Spacing.md, flex: 1 }}
         >
-          All services are processed securely. Healthcare consultations are HIPAA compliant.
+          {i18n.t("services_info_note")}
         </ThemedText>
       </View>
     </ScreenScrollView>
@@ -204,6 +205,7 @@ export default function ServicesScreen() {
 }
 
 const styles = StyleSheet.create({
+// ... (styles remain unchanged)
   section: {
     marginBottom: Spacing.xl,
   },

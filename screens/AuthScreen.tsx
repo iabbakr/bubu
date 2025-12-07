@@ -13,6 +13,9 @@ import { Location } from "../types/location";
 import { useNavigation } from "@react-navigation/native";
 import { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+// --- ASSUMED I18N IMPORT ---
+import i18n from '../lib/i18n'; 
+// ---------------------------
 
 type AuthScreenNavigationProp = NativeStackNavigationProp<
   ProfileStackParamList,
@@ -32,22 +35,20 @@ type TermsModalProps = {
 const TermsModal = ({ visible, onClose }: TermsModalProps) => {
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
-      <View style={{ flex: 1, padding: 20 }}>
+      <View style={{ flex: 1, padding: Spacing.xl }}>
         <Pressable
           onPress={onClose}
-          style={{ alignSelf: "flex-end", padding: 10 }}
+          style={{ alignSelf: "flex-end", padding: Spacing.sm }}
         >
           <Feather name="x" size={28} />
         </Pressable>
 
-        <Text style={{ fontSize: 24, fontWeight: "700", marginBottom: 20 }}>
-          Terms & Conditions
+        <Text style={{ fontSize: 24, fontWeight: "700", marginBottom: Spacing.md }}>
+          {i18n.t("terms_conditions_title")}
         </Text>
 
         <Text style={{ fontSize: 16, lineHeight: 22 }}>
-          Add your full Terms & Conditions and Privacy Policy text here...
-          {"\n\n"}
-          You can always move this to a separate file later.
+          {i18n.t("terms_privacy_body")}
         </Text>
       </View>
     </Modal>
@@ -86,29 +87,29 @@ export default function AuthScreen() {
     setError("");
 
     if (!email || !password) {
-      setError("Email and password are required");
+      setError(i18n.t("email_password_required_error"));
       return;
     }
 
     if (isSignUp) {
       if (!name) {
-        setError("Full name is required");
+        setError(i18n.t("full_name_required_error"));
         return;
       }
       if (password !== confirmPassword) {
-        setError("Passwords do not match");
+        setError(i18n.t("passwords_no_match_error"));
         return;
       }
       if (!termsAccepted) {
-        setError("Please accept the terms and privacy policy");
+        setError(i18n.t("accept_terms_error"));
         return;
       }
       if (!location || !location.state || !location.city || !location.area) {
-        setError("Please select your complete location (State, City, and Area)");
+        setError(i18n.t("location_required_error"));
         return;
       }
       if (selectedRole === "seller" && !sellerCategory) {
-        setError("Please select your seller category");
+        setError(i18n.t("seller_category_required_error"));
         return;
       }
     }
@@ -134,17 +135,17 @@ export default function AuthScreen() {
       }
 
       if (!success) {
-        setError(isSignUp ? "Failed to create account" : "Invalid credentials");
+        setError(isSignUp ? i18n.t("failed_create_account") : i18n.t("invalid_credentials"));
       }
     } catch (err: any) {
       console.error("Auth error:", err);
-      setError(err?.message || "An error occurred. Please try again.");
+      setError(err?.message || i18n.t("an_error_occurred"));
     } finally {
       setLoading(false);
     }
   };
 
-  const renderRoleButton = (role: typeof selectedRole, label: string, icon: string) => (
+  const renderRoleButton = (role: typeof selectedRole, labelKey: string, icon: string) => (
     <Pressable
       style={[
         styles.roleButton,
@@ -167,12 +168,12 @@ export default function AuthScreen() {
           fontSize: 12,
         }}
       >
-        {label}
+        {i18n.t(labelKey)}
       </ThemedText>
     </Pressable>
   );
 
-  const renderGenderButton = (genderOption: typeof gender, label: string) => (
+  const renderGenderButton = (genderOption: typeof gender, labelKey: string) => (
     <Pressable
       key={genderOption}
       onPress={() => setGender(genderOption)}
@@ -188,7 +189,7 @@ export default function AuthScreen() {
         color: gender === genderOption ? theme.primary : theme.textSecondary,
         textTransform: "capitalize",
       }}>
-        {label}
+        {i18n.t(labelKey)}
       </Text>
     </Pressable>
   );
@@ -204,46 +205,46 @@ export default function AuthScreen() {
             resizeMode="contain"
           />
           <ThemedText type="h1" style={{ marginTop: Spacing.lg }}>
-            Bubu
+            {i18n.t("app_name")}
           </ThemedText>
           <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
-            Your one-stop marketplace
+            {i18n.t("marketplace_slogan")}
           </ThemedText>
         </View>
 
         {/* Form */}
         <View style={styles.form}>
           <ThemedText type="h2" style={{ marginBottom: Spacing.xl }}>
-            {isSignUp ? "Create Account" : "Welcome Back"}
+            {isSignUp ? i18n.t("create_account_title") : i18n.t("welcome_back_title")}
           </ThemedText>
 
           {/* --- SIGN UP ONLY FIELDS --- */}
           {isSignUp && (
             <>
-              <TextInputField label="Full Name" value={name} onChangeText={setName} placeholder="Enter your name" />
-              <TextInputField label="Phone Number (Optional)" value={phone} onChangeText={setPhone} placeholder="Enter phone number" keyboardType="phone-pad" />
+              <TextInputField label={i18n.t("full_name_label")} value={name} onChangeText={setName} placeholder={i18n.t("enter_name_placeholder")} />
+              <TextInputField label={i18n.t("phone_optional_label")} value={phone} onChangeText={setPhone} placeholder={i18n.t("enter_phone_placeholder")} keyboardType="phone-pad" />
 
-              <ThemedText type="label" style={{ marginBottom: Spacing.sm }}>GENDER</ThemedText>
+              <ThemedText type="label" style={{ marginBottom: Spacing.sm }}>{i18n.t("gender_label")}</ThemedText>
 
               <View style={styles.genderContainer}>
-                {renderGenderButton("male", "Male")}
-                {renderGenderButton("female", "Female")}
-                {renderGenderButton("other", "Other")}
+                {renderGenderButton("male", "male")}
+                {renderGenderButton("female", "female")}
+                {renderGenderButton("other", "other")}
               </View>
 
               <ThemedText type="label" style={{ marginBottom: Spacing.sm, marginTop: Spacing.md }}>
-                SELECT YOUR ROLE
+                {i18n.t("select_role_label")}
               </ThemedText>
 
               <View style={styles.roleContainer}>
-                {renderRoleButton("buyer", "Buyer", "shopping-cart")}
-                {renderRoleButton("seller", "Seller", "briefcase")}
-                {renderRoleButton("admin", "Admin", "shield")}
+                {renderRoleButton("buyer", "buyer", "shopping-cart")}
+                {renderRoleButton("seller", "seller", "briefcase")}
+                {renderRoleButton("admin", "admin", "shield")}
               </View>
 
               {selectedRole === "seller" && (
                 <View style={{ marginBottom: Spacing.md }}>
-                  <ThemedText type="label" style={{ marginBottom: 5 }}>SELLER CATEGORY</ThemedText>
+                  <ThemedText type="label" style={{ marginBottom: 5 }}>{i18n.t("seller_category_label")}</ThemedText>
                   <View style={{ flexDirection: "row", gap: 10 }}>
                     <Pressable
                       onPress={() => setSellerCategory("supermarket")}
@@ -257,7 +258,7 @@ export default function AuthScreen() {
                       ]}
                     >
                       <ThemedText style={{ color: sellerCategory === "supermarket" ? theme.primary : theme.text }}>
-                        Supermarket
+                        {i18n.t("supermarket")}
                       </ThemedText>
                     </Pressable>
 
@@ -273,22 +274,22 @@ export default function AuthScreen() {
                       ]}
                     >
                       <ThemedText style={{ color: sellerCategory === "pharmacy" ? theme.primary : theme.text }}>
-                        Pharmacy
+                        {i18n.t("pharmacy")}
                       </ThemedText>
                     </Pressable>
                   </View>
                 </View>
               )}
 
-              <TextInputField label="Referral Code (Optional)" value={referralCode} onChangeText={setReferralCode} placeholder="Enter referral code" />
+              <TextInputField label={i18n.t("referral_code_optional")} value={referralCode} onChangeText={setReferralCode} placeholder={i18n.t("enter_referral_placeholder")} />
 
-              <LocationSelector value={location} onChange={setLocation} label="Location (State, City & Area)" />
+              <LocationSelector value={location} onChange={setLocation} label={i18n.t("location_label")} />
 
               {location && (
                 <View style={[styles.locationPreview, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
                   <Feather name="map-pin" size={16} color={theme.primary} />
                   <ThemedText type="caption" style={{ marginLeft: Spacing.sm, color: theme.textSecondary }}>
-                    Selected: {location.state}, {location.city}, {location.area}
+                    {i18n.t("location_selected_preview", { state: location.state, city: location.city, area: location.area })}
                   </ThemedText>
                 </View>
               )}
@@ -297,20 +298,20 @@ export default function AuthScreen() {
 
           {/* --- EMAIL --- */}
           <TextInputField
-            label="Email"
+            label={i18n.t("email_label")}
             value={email}
             onChangeText={setEmail}
-            placeholder="your.email@example.com"
+            placeholder={i18n.t("email_placeholder")}
             keyboardType="email-address"
             autoCapitalize="none"
           />
 
           {/* --- PASSWORD --- */}
           <TextInputField
-            label="Password"
+            label={i18n.t("password_label")}
             value={password}
             onChangeText={setPassword}
-            placeholder="Enter password"
+            placeholder={i18n.t("enter_password_placeholder")}
             secureTextEntry={!showPassword}
             rightIcon={
               <Pressable onPress={() => setShowPassword(!showPassword)}>
@@ -322,23 +323,23 @@ export default function AuthScreen() {
           {/* FORGOT PASSWORD */}
           {!isSignUp && (
             <Pressable
-  onPress={() => navigation.navigate("ForgotPassword")}
-  style={{ alignSelf: "flex-end", marginBottom: Spacing.md, marginTop: -Spacing.xs }}
->
-  <Text style={{ color: theme.primary, fontWeight: "600" }}>
-    Forgot Password?
-  </Text>
-</Pressable>
+              onPress={() => navigation.navigate("ForgotPassword")}
+              style={{ alignSelf: "flex-end", marginBottom: Spacing.md, marginTop: -Spacing.xs }}
+            >
+              <Text style={{ color: theme.primary, fontWeight: "600" }}>
+                {i18n.t("forgot_password")}
+              </Text>
+            </Pressable>
 
           )}
 
           {/* CONFIRM PASSWORD */}
           {isSignUp && (
             <TextInputField
-              label="Confirm Password"
+              label={i18n.t("confirm_password_label")}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
-              placeholder="Confirm password"
+              placeholder={i18n.t("confirm_password_placeholder")}
               secureTextEntry={!showConfirm}
               rightIcon={
                 <Pressable onPress={() => setShowConfirm(!showConfirm)}>
@@ -359,13 +360,13 @@ export default function AuthScreen() {
               </Pressable>
 
               <Text style={{ color: theme.text, flex: 1 }}>
-                I accept the{" "}
+                {i18n.t("i_accept_the")}{" "}
                 <Text onPress={() => setShowTermsModal(true)} style={{ color: theme.primary, fontWeight: "600" }}>
-                  Terms & Conditions
+                  {i18n.t("terms_conditions")}
                 </Text>{" "}
-                and{" "}
+                {i18n.t("and")}{" "}
                 <Text onPress={() => setShowTermsModal(true)} style={{ color: theme.primary, fontWeight: "600" }}>
-                  Privacy Policy
+                  {i18n.t("privacy_policy")}
                 </Text>
               </Text>
             </Pressable>
@@ -380,7 +381,11 @@ export default function AuthScreen() {
           ) : null}
 
           {/* BUTTON */}
-          <PrimaryButton title={isSignUp ? "Sign Up" : "Sign In"} onPress={handleSubmit} loading={loading} />
+          <PrimaryButton 
+            title={isSignUp ? i18n.t("sign_up") : i18n.t("sign_in")} 
+            onPress={handleSubmit} 
+            loading={loading} 
+          />
 
           {/* SWITCH LOGIN/SIGNUP */}
           <Pressable
@@ -391,10 +396,10 @@ export default function AuthScreen() {
             }}
           >
             <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {isSignUp ? "Already have an account? " : "Don't have an account? "}
+              {isSignUp ? i18n.t("already_have_account") : i18n.t("dont_have_account")}
             </ThemedText>
             <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
-              {isSignUp ? "Sign In" : "Sign Up"}
+              {isSignUp ? i18n.t("sign_in_switch") : i18n.t("sign_up_switch")}
             </ThemedText>
           </Pressable>
         </View>
@@ -422,7 +427,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   logo: {
-    width: 100,        // Adjust size as needed
+    width: 100,
     height: 100,
     marginBottom: Spacing.md,
   },

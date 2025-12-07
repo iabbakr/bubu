@@ -27,6 +27,9 @@
       "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
+    "extra": {
+      "streamApiKey": "${EXPO_PUBLIC_STREAM_API_KEY}"
+    },
     "plugins": [
       [
         "expo-splash-screen",

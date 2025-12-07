@@ -22,6 +22,7 @@ import {
 } from "firebase/firestore";
 import { soundManager } from '../lib/soundManager';
 import { emailService } from "../lib/resend";
+import { TimeSlot } from "../services/professionalService";
 
 
 export type UserRole = 
@@ -72,7 +73,7 @@ export interface User {
   specialization?: string;             // For doctors/dentists
   yearsOfExperience?: number;         // For professionals
   consultationFee?: number;           // For professionals
-  availability?: string[];            // Available days for professionals
+  availability?: TimeSlot[];            // Available days for professionals
   isVerified?: boolean;               // Verification status for professionals
   isActive?: boolean;                 // Account active status
   assignedBy?: string;                // UID of admin who assigned role
@@ -168,6 +169,18 @@ export interface Transaction {
   status?: "pending" | "completed";
 }
 
+export interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  imageUrls: string[];
+  sellerId: string;
+  discount?: number;
+  isPrescriptionRequired?: boolean;
+  category?: "supermarket" | "pharmacy";
+  stock?: number;
+}
 
 
 export interface Coupon {
@@ -1349,6 +1362,53 @@ export const firebaseService = {
   if (updatedUserSnap.exists()) {
     return updatedUserSnap.data() as any;
   }
+},
+
+// Add these methods to your firebaseService object in firebaseService.ts
+
+// -----------------------------
+// CART MANAGEMENT
+// -----------------------------
+async getCart(userId: string): Promise<CartItem[]> {
+  const cartRef = doc(db, "carts", userId);
+  const cartSnap = await getDoc(cartRef);
+  
+  if (cartSnap.exists()) {
+    return cartSnap.data().items || [];
+  }
+  return [];
+},
+
+async saveCart(userId: string, items: CartItem[]): Promise<void> {
+  const cartRef = doc(db, "carts", userId);
+  await setDoc(cartRef, {
+    userId,
+    items,
+    updatedAt: Date.now(),
+  });
+},
+
+async clearCartInFirebase(userId: string): Promise<void> {
+  const cartRef = doc(db, "carts", userId);
+  await setDoc(cartRef, {
+    userId,
+    items: [],
+    updatedAt: Date.now(),
+  });
+},
+
+// ✅ Optional: Clean up old carts (can be called periodically)
+async cleanupOldCarts(daysOld: number = 30): Promise<void> {
+  const cartsCol = collection(db, "carts");
+  const oldTimestamp = Date.now() - (daysOld * 24 * 60 * 60 * 1000);
+  
+  const q = query(cartsCol, where("updatedAt", "<", oldTimestamp));
+  const snapshot = await getDocs(q);
+  
+  const deletions = snapshot.docs.map(doc => deleteDoc(doc.ref));
+  await Promise.all(deletions);
+  
+  console.log(`Cleaned up ${snapshot.docs.length} old carts`);
 },
 
 };

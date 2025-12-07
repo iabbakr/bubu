@@ -1,8 +1,10 @@
 // hooks/useCart.tsx
-import React, { createContext, useContext, useState, ReactNode } from "react";
-import { Product } from "@/services/firebaseService";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { Product } from "../services/firebaseService";
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
+import { db } from "../lib/firebase";
+import { useAuth } from "./useAuth";
 
-// ✅ Updated CartItem interface with prescription flag
 export interface CartItem {
   id: string;
   name: string;
@@ -11,8 +13,7 @@ export interface CartItem {
   imageUrls: string[];
   sellerId: string;
   discount?: number;
-  isPrescriptionRequired?: boolean;  // NEW: Flag for prescription requirement
-  // Keep other Product fields that might be needed
+  isPrescriptionRequired?: boolean;
   category?: "supermarket" | "pharmacy";
   stock?: number;
 }
@@ -26,47 +27,107 @@ interface CartContextType {
   getTotalItems: () => number;
   getSubtotal: () => number;
   getTotal: (discount: number) => number;
+  loading: boolean;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  // ✅ Updated addToCart to include prescription info
+  // ✅ Load cart from Firebase when user logs in
+  useEffect(() => {
+    if (!user) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    // ✅ Real-time listener for cart updates across devices
+    const cartRef = doc(db, "carts", user.uid);
+    const unsubscribe = onSnapshot(
+      cartRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const cartData = snapshot.data();
+          setItems(cartData.items || []);
+        } else {
+          setItems([]);
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error loading cart:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // ✅ Save cart to Firebase whenever items change
+  const saveCartToFirebase = async (updatedItems: CartItem[]) => {
+    if (!user) return;
+
+    try {
+      const cartRef = doc(db, "carts", user.uid);
+      await setDoc(cartRef, {
+        userId: user.uid,
+        items: updatedItems,
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      console.error("Error saving cart:", error);
+    }
+  };
+
   const addToCart = (product: Product, quantity: number = 1) => {
     setItems((current) => {
       const existing = current.find((item) => item.id === product.id);
 
+      let updatedItems: CartItem[];
+
       if (existing) {
-        return current.map((item) =>
+        updatedItems = current.map((item) =>
           item.id === product.id
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
+      } else {
+        const newItem: CartItem = {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          quantity,
+          imageUrls: Array.isArray(product.imageUrls)
+            ? product.imageUrls
+            : [product.imageUrls],
+          sellerId: product.sellerId,
+          discount: product.discount,
+          isPrescriptionRequired: product.isPrescriptionRequired || false,
+          category: product.category,
+          stock: product.stock,
+        };
+        updatedItems = [...current, newItem];
       }
 
-      const newItem: CartItem = {
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        quantity,
-        imageUrls: Array.isArray(product.imageUrls)
-          ? product.imageUrls
-          : [product.imageUrls],
-        sellerId: product.sellerId,
-        discount: product.discount,
-        isPrescriptionRequired: product.isPrescriptionRequired || false,  // NEW
-        category: product.category,
-        stock: product.stock,
-      };
-
-      return [...current, newItem];
+      // ✅ Save to Firebase
+      saveCartToFirebase(updatedItems);
+      return updatedItems;
     });
   };
 
   const removeFromCart = (productId: string) => {
-    setItems(currentItems => currentItems.filter(item => item.id !== productId));
+    setItems((currentItems) => {
+      const updatedItems = currentItems.filter((item) => item.id !== productId);
+      // ✅ Save to Firebase
+      saveCartToFirebase(updatedItems);
+      return updatedItems;
+    });
   };
 
   const updateQuantity = (productId: string, quantity: number) => {
@@ -74,16 +135,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
       removeFromCart(productId);
       return;
     }
-    
-    setItems(currentItems =>
-      currentItems.map(item =>
+
+    setItems((currentItems) => {
+      const updatedItems = currentItems.map((item) =>
         item.id === productId ? { ...item, quantity } : item
-      )
-    );
+      );
+      // ✅ Save to Firebase
+      saveCartToFirebase(updatedItems);
+      return updatedItems;
+    });
   };
 
   const clearCart = () => {
     setItems([]);
+    // ✅ Clear from Firebase
+    if (user) {
+      saveCartToFirebase([]);
+    }
   };
 
   const getTotalItems = () => {
@@ -92,7 +160,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const getSubtotal = () => {
     return items.reduce((total, item) => {
-      const price = item.discount 
+      const price = item.discount
         ? item.price * (1 - item.discount / 100)
         : item.price;
       return total + price * item.quantity;
@@ -114,6 +182,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         getTotalItems,
         getSubtotal,
         getTotal,
+        loading,
       }}
     >
       {children}

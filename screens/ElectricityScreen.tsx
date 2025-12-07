@@ -431,6 +431,7 @@ export default function ElectricityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 100,
   },
   content: {
     padding: Spacing.lg,

@@ -14,7 +14,10 @@ import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types/navigation";
-import { getDeliveryDescription, getDeliveryIcon, calculateDeliveryTimeframe } from "../utils/locationUtils";
+import { getDeliveryIcon, calculateDeliveryTimeframe } from "../utils/locationUtils";
+// --- ASSUMED I18N IMPORT ---
+import i18n from '@/lib/i18n'; 
+// ---------------------------
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type OrderStatus = "running" | "delivered" | "cancelled";
@@ -81,35 +84,35 @@ export default function OrdersScreen() {
 
   const handleConfirmReceipt = (order: Order) => {
   Alert.alert(
-    "Confirm Receipt",
-    "Have you physically received all items in good condition?",
+    i18n.t("confirm_receipt_title"),
+    i18n.t("confirm_receipt_body"),
     [
       {
-        text: "Cancel",
-        style: "cancel", // ← This makes it gray and safe
+        text: i18n.t("cancel"),
+        style: "cancel", 
         onPress: () => console.log("Confirmation cancelled"),
       },
       {
-        text: "No, Report Issue",
+        text: i18n.t("no_report_issue"),
         style: "default",
         onPress: () => openDisputeModal(order),
       },
       {
-        text: "Yes, All Good!",
-        style: "destructive", // ← Makes it red, shows it's final action
+        text: i18n.t("yes_all_good"),
+        style: "destructive", 
         onPress: async () => {
           try {
             await firebaseService.confirmOrderDelivery(order.id, user!.uid);
-            Alert.alert("Success", "Thank you! Payment has been released to the seller.");
+            Alert.alert(i18n.t("success"), i18n.t("payment_released"));
             loadOrders();
           } catch (error: any) {
-            Alert.alert("Error", error.message || "Failed to confirm delivery");
+            Alert.alert(i18n.t("error"), error.message || i18n.t("fail_confirm_delivery"));
           }
         },
       },
     ],
     { 
-      cancelable: true, // ← Allows tapping outside to dismiss (iOS/Android)
+      cancelable: true, 
       onDismiss: () => console.log("Alert dismissed"),
     }
   );
@@ -128,7 +131,7 @@ export default function OrdersScreen() {
   const confirmCancel = async () => {
     if (!selectedOrder || !user) return;
     if (!cancelReason.trim()) {
-      Alert.alert("Error", "Please provide a reason for cancellation");
+      Alert.alert(i18n.t("error"), i18n.t("provide_reason_error"));
       return;
     }
     
@@ -137,10 +140,10 @@ export default function OrdersScreen() {
       
       if (isBuyer) {
         await firebaseService.cancelOrderByBuyer(selectedOrder.id, user.uid, cancelReason);
-        Alert.alert("Success", "Order cancelled. You have been refunded.");
+        Alert.alert(i18n.t("success"), i18n.t("order_cancelled_buyer_refunded"));
       } else {
         await firebaseService.cancelOrderBySeller(selectedOrder.id, user.uid, cancelReason);
-        Alert.alert("Success", "Order cancelled. Buyer has been refunded.");
+        Alert.alert(i18n.t("success"), i18n.t("order_cancelled_seller_refunded"));
       }
       
       setShowCancelModal(false);
@@ -148,7 +151,7 @@ export default function OrdersScreen() {
       setSelectedOrder(null);
       loadOrders();
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to cancel order");
+      Alert.alert(i18n.t("error"), error.message || i18n.t("fail_cancel_order"));
     }
   };
 
@@ -160,19 +163,19 @@ export default function OrdersScreen() {
   const submitDispute = async () => {
     if (!selectedOrder || !user) return;
     if (!disputeDetails.trim()) {
-      Alert.alert("Error", "Please describe the issue");
+      Alert.alert(i18n.t("error"), i18n.t("describe_issue_prompt"));
       return;
     }
     try {
       setSubmitting(true);
       await firebaseService.openDispute(selectedOrder.id, user.uid, disputeDetails);
-      Alert.alert("Dispute Opened", "Your dispute has been submitted. An admin will review it shortly.");
+      Alert.alert(i18n.t("dispute_open_title"), i18n.t("dispute_submitted_success"));
       setShowDisputeModal(false);
       setDisputeDetails("");
       setSelectedOrder(null);
       loadOrders();
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to open dispute");
+      Alert.alert(i18n.t("error"), error.message || i18n.t("fail_open_dispute"));
     } finally {
       setSubmitting(false);
     }
@@ -186,7 +189,7 @@ export default function OrdersScreen() {
   const resolveDispute = async () => {
     if (!selectedOrder || !user) return;
     if (adminDecision === "none") {
-      Alert.alert("Error", "Please select an action");
+      Alert.alert(i18n.t("error"), i18n.t("fail_select_action"));
       return;
     }
 
@@ -194,13 +197,13 @@ export default function OrdersScreen() {
     
     try {
       await firebaseService.resolveDispute(selectedOrder.id, user.uid, resolution);
-      Alert.alert("Success", "Dispute resolved successfully");
+      Alert.alert(i18n.t("success"), i18n.t("dispute_resolved_success"));
       setShowAdminDisputeModal(false);
       setAdminDecision("none");
       setSelectedOrder(null);
       loadOrders();
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to resolve dispute");
+      Alert.alert(i18n.t("error"), error.message || i18n.t("fail_resolve_dispute"));
     }
   };
 
@@ -210,22 +213,22 @@ export default function OrdersScreen() {
 
   const contactSupport = () => {
     Alert.alert(
-      "Contact Support",
-      "How would you like to contact support?",
+      i18n.t("contact_support_title"),
+      i18n.t("contact_support_body"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Email", onPress: () => Alert.alert("Email", "support@markethub.com") },
-        { text: "Chat", onPress: () => Alert.alert("Chat", "Chat feature coming soon") }
+        { text: i18n.t("cancel"), style: "cancel" },
+        { text: i18n.t("email_button"), onPress: () => Alert.alert(i18n.t("email_button"), "support@markethub.com") },
+        { text: i18n.t("chat_button"), onPress: () => Alert.alert(i18n.t("chat_button"), i18n.t("chat_coming_soon")) }
       ]
     );
   };
 
   // Updated function using location utilities
   const getDeliveryTimeframeInfo = (order: Order) => {
-    if (!user) return { text: "Delivery timeframe to be confirmed", icon: "package" };
+    if (!user) return { text: i18n.t("delivery_timeframe_unconfirmed"), icon: "package" };
     
     const seller = sellers.get(order.sellerId);
-    if (!seller) return { text: "Delivery timeframe to be confirmed", icon: "package" };
+    if (!seller) return { text: i18n.t("delivery_timeframe_unconfirmed"), icon: "package" };
 
     const timeframe = calculateDeliveryTimeframe(user.location, seller.location);
     const icon = getDeliveryIcon(user.location, seller.location);
@@ -239,12 +242,11 @@ export default function OrdersScreen() {
   };
 
   const getCancelModalTitle = () => {
-    if (!selectedOrder || !user) return "Cancel Order";
-    const isBuyer = user.uid === selectedOrder.buyerId;
-    return isBuyer ? "Cancel Order" : "Cancel Order";
+    if (!selectedOrder || !user) return i18n.t("cancel_order");
+    return i18n.t("cancel_order");
   };
 
-  const renderTab = (status: OrderStatus, label: string) => {
+  const renderTab = (status: OrderStatus, labelKey: string) => {
     const isSelected = selectedStatus === status;
     return (
       <Pressable
@@ -262,7 +264,7 @@ export default function OrdersScreen() {
           weight="medium"
           style={{ color: isSelected ? theme.buttonText : theme.textSecondary }}
         >
-          {label}
+          {i18n.t(labelKey)}
         </ThemedText>
       </Pressable>
     );
@@ -280,26 +282,16 @@ export default function OrdersScreen() {
         <View style={styles.actionsContainer}>
           {isBuyer && (
             <PrimaryButton
-              title="Confirm Received ✓"
+              title={i18n.t("confirm_received_button")}
               onPress={() => handleConfirmReceipt(order)}
               style={styles.actionButton}
             />
           )}
           
-          {isSeller && (
+          {(isSeller || (isBuyer && !order.trackingStatus)) && (
             <PrimaryButton
-              title="Cancel Order"
-              onPress={() => handleSellerCancel(order)}
-              variant="outlined"
-              style={styles.actionButton}
-            />
-          )}
-
-          {/* Buyer Cancel Button - Only show before acknowledgment */}
-          {isBuyer && !order.trackingStatus && (
-            <PrimaryButton
-              title="Cancel Order"
-              onPress={() => handleBuyerCancel(order)}
+              title={i18n.t("cancel_order")}
+              onPress={() => (isSeller ? handleSellerCancel(order) : handleBuyerCancel(order))}
               variant="outlined"
               style={styles.actionButton}
             />
@@ -321,7 +313,7 @@ export default function OrdersScreen() {
             />
             <View style={{ flex: 1, marginLeft: Spacing.sm }}>
               <ThemedText type="caption" style={{ fontWeight: "600" }}>
-                Expected Delivery: {deliveryInfo.text}
+                {i18n.t("expected_delivery")}: {deliveryInfo.text}
               </ThemedText>
               {deliveryInfo.description && (
                 <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
@@ -329,7 +321,7 @@ export default function OrdersScreen() {
                 </ThemedText>
               )}
               <ThemedText type="caption" style={{ color: theme.warning, marginTop: 4, fontStyle: "italic" }}>
-                If not delivered within stated time, open a dispute for refund. T&C apply.
+                {i18n.t("dispute_time_warning")}
               </ThemedText>
             </View>
           </View>
@@ -341,7 +333,7 @@ export default function OrdersScreen() {
             >
               <Feather name="alert-circle" size={16} color={theme.warning} />
               <ThemedText style={{ marginLeft: 6, color: theme.warning }}>
-                {isBuyer ? "Report Issue / Open Dispute" : "Open Dispute If Delivered"}
+                {isBuyer ? i18n.t("report_issue_dispute_buyer") : i18n.t("open_dispute_seller")}
               </ThemedText>
             </Pressable>
           )}
@@ -354,11 +346,11 @@ export default function OrdersScreen() {
         return (
           <View style={{ marginTop: 10 }}>
             <PrimaryButton
-              title="Resolve Dispute (Admin)"
+              title={i18n.t("resolve_dispute_button")}
               onPress={() => openAdminDisputeModal(order)}
             />
             <PrimaryButton
-              title="Open Dispute Chat"
+              title={i18n.t("open_dispute_chat")}
               onPress={() => handleOpenDisputeChat(order)}
               variant="outlined"
               style={{ marginTop: Spacing.sm }}
@@ -369,13 +361,13 @@ export default function OrdersScreen() {
         return (
           <View style={{ marginTop: 10 }}>
             <PrimaryButton
-              title="View Dispute Chat"
+              title={i18n.t("view_dispute_chat")}
               onPress={() => handleOpenDisputeChat(order)}
             />
             <View style={[styles.disputeNotice, { marginTop: Spacing.sm }]}>
               <Feather name="message-circle" size={16} color={theme.warning} />
               <ThemedText type="caption" style={{ marginLeft: Spacing.sm, color: theme.warning }}>
-                Dispute is open. Chat with admin for resolution.
+                {i18n.t("dispute_open_notice")}
               </ThemedText>
             </View>
           </View>
@@ -403,10 +395,10 @@ export default function OrdersScreen() {
     <View style={styles.empty}>
       <Feather name="package" size={64} color={theme.textSecondary} />
       <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
-        No {selectedStatus} orders
+        {i18n.t("no_status_orders", { status: i18n.t(selectedStatus) })}
       </ThemedText>
       <ThemedText type="caption" style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
-        Your {selectedStatus} orders will appear here
+        {i18n.t("status_orders_appear_here", { status: i18n.t(selectedStatus) })}
       </ThemedText>
     </View>
   );
@@ -417,10 +409,10 @@ export default function OrdersScreen() {
         <View style={styles.empty}>
           <Feather name="log-in" size={64} color={theme.textSecondary} />
           <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
-            Please sign in
+            {i18n.t("please_sign_in_title")}
           </ThemedText>
           <ThemedText type="caption" style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
-            Sign in to view your orders
+            {i18n.t("sign_in_view_orders")}
           </ThemedText>
         </View>
       </ScreenScrollView>
@@ -431,15 +423,15 @@ export default function OrdersScreen() {
     <>
       <ScreenScrollView>
         <View style={styles.tabContainer}>
-          {renderTab("running", "Running")}
-          {renderTab("delivered", "Delivered")}
-          {renderTab("cancelled", "Cancelled")}
+          {renderTab("running", "running")}
+          {renderTab("delivered", "delivered")}
+          {renderTab("cancelled", "cancelled")}
         </View>
 
         {loading ? (
           <View style={styles.loading}>
             <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              Loading orders...
+              {i18n.t("loading_orders")}
             </ThemedText>
           </View>
         ) : orders.length === 0 ? (
@@ -464,20 +456,20 @@ export default function OrdersScreen() {
               </View>
 
               <ThemedText style={{ marginBottom: Spacing.md, color: theme.textSecondary }}>
-                Please provide a reason for cancellation:
+                {i18n.t("cancel_reason_prompt")}
               </ThemedText>
 
               <TextInput
                 style={[styles.textArea, { borderColor: theme.border, color: theme.text, backgroundColor: theme.backgroundSecondary }]}
                 value={cancelReason}
                 onChangeText={setCancelReason}
-                placeholder="e.g., Out of stock, Unable to deliver..."
+                placeholder={i18n.t("cancel_reason_placeholder")}
                 placeholderTextColor={theme.textSecondary}
                 multiline
                 numberOfLines={4}
               />
 
-              <PrimaryButton title="Confirm Cancellation" onPress={confirmCancel} style={{ marginTop: Spacing.md }} />
+              <PrimaryButton title={i18n.t("confirm_cancellation_button")} onPress={confirmCancel} style={{ marginTop: Spacing.md }} />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -493,27 +485,27 @@ export default function OrdersScreen() {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
               <View style={styles.modalHeader}>
-                <ThemedText type="h3">Open Dispute</ThemedText>
+                <ThemedText type="h3">{i18n.t("open_dispute_title")}</ThemedText>
                 <Pressable onPress={() => setShowDisputeModal(false)}>
                   <Feather name="x" size={24} color={theme.text} />
                 </Pressable>
               </View>
 
               <ThemedText style={{ marginBottom: Spacing.md, color: theme.textSecondary }}>
-                Describe the issue with this order:
+                {i18n.t("describe_issue_prompt")}
               </ThemedText>
 
               <TextInput
                 style={[styles.textArea, { borderColor: theme.border, color: theme.text, backgroundColor: theme.backgroundSecondary }]}
                 value={disputeDetails}
                 onChangeText={setDisputeDetails}
-                placeholder="e.g., Items not received, damaged goods, wrong items..."
+                placeholder={i18n.t("dispute_placeholder")}
                 placeholderTextColor={theme.textSecondary}
                 multiline
                 numberOfLines={6}
               />
 
-              <PrimaryButton title="Submit Dispute" onPress={submitDispute} disabled={submitting} style={{ marginTop: Spacing.md }} />
+              <PrimaryButton title={i18n.t("submit_dispute_button")} onPress={submitDispute} disabled={submitting} style={{ marginTop: Spacing.md }} />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -529,14 +521,14 @@ export default function OrdersScreen() {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
               <View style={styles.modalHeader}>
-                <ThemedText type="h3">Resolve Dispute</ThemedText>
+                <ThemedText type="h3">{i18n.t("resolve_dispute_admin_title")}</ThemedText>
                 <Pressable onPress={() => setShowAdminDisputeModal(false)}>
                   <Feather name="x" size={24} color={theme.text} />
                 </Pressable>
               </View>
 
               <ThemedText style={{ marginBottom: Spacing.md, color: theme.textSecondary }}>
-                Choose an action for this dispute:
+                {i18n.t("select_action_prompt")}
               </ThemedText>
 
               <Pressable
@@ -546,7 +538,7 @@ export default function OrdersScreen() {
                 ]}
                 onPress={() => setAdminDecision("refund")}
               >
-                <ThemedText style={{ color: adminDecision === "refund" ? "#fff" : theme.text }}>Refund Buyer</ThemedText>
+                <ThemedText style={{ color: adminDecision === "refund" ? "#fff" : theme.text }}>{i18n.t("refund_buyer")}</ThemedText>
               </Pressable>
 
               <Pressable
@@ -556,10 +548,10 @@ export default function OrdersScreen() {
                 ]}
                 onPress={() => setAdminDecision("release")}
               >
-                <ThemedText style={{ color: adminDecision === "release" ? "#fff" : theme.text }}>Release Payment to Seller</ThemedText>
+                <ThemedText style={{ color: adminDecision === "release" ? "#fff" : theme.text }}>{i18n.t("release_to_seller")}</ThemedText>
               </Pressable>
 
-              <PrimaryButton title="Confirm" onPress={resolveDispute} style={{ marginTop: Spacing.md }} />
+              <PrimaryButton title={i18n.t("confirm")} onPress={resolveDispute} style={{ marginTop: Spacing.md }} />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -578,7 +570,7 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: Spacing.md, borderRadius: BorderRadius.sm, borderWidth: 1, alignItems: "center" },
   list: { marginTop: Spacing.md, paddingBottom: 80 },
   orderCardContainer: { borderRadius: BorderRadius.md, borderWidth: 1, marginBottom: Spacing.lg, overflow: "hidden" },
-  actionsContainer: { padding: Spacing.lg, borderTopWidth: 1, borderTopColor: "#e5e5e5" },
+  actionsContainer: { padding: Spacing.lg, borderTopWidth: 1, borderTopColor: "#e5e5e5", gap:10 },
   actionButton: { marginBottom: 0, padding: Spacing.md, borderRadius: BorderRadius.sm, alignItems: "center", justifyContent: "center" },
   disputeButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", padding: Spacing.md, borderRadius: BorderRadius.sm, borderWidth: 1, marginTop: Spacing.sm },
   deliveryNotice: { flexDirection: "row", alignItems: "flex-start", padding: Spacing.md, borderRadius: BorderRadius.sm, marginBottom: Spacing.sm },

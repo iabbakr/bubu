@@ -35,6 +35,8 @@ import AdminRoleManagement from "../screens/AdminRoleManagement";
 import StateManagerDashboard from "../screens/StateManagerDashboard";
 import WishlistScreen from "@/screens/WishlistScreen";
 import ProfessionalDashboard from "@/screens/ProfessionalDashboardScreen";
+import VideoCallTestScreen from '@/screens/VideoCallTestScreen';
+
 
 export type ProfileStackParamList = {
   Profile: undefined;
@@ -61,6 +63,7 @@ export type ProfileStackParamList = {
   ChangePassword: undefined;
   ForgotPassword: undefined;
   AdminRole: undefined;
+  VideoCallTest: undefined;
   
   AdminRoleManagement: undefined;
   StateManagerDashboard: undefined;
@@ -124,6 +127,12 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+
+          <Stack.Screen 
+  name="VideoCallTest" 
+  component={VideoCallTestScreen}
+  options={{ title: "Video Call Test" }}
+/>
 
           <Stack.Screen
             name="ChangePassword"

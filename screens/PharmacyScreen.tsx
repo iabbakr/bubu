@@ -17,6 +17,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { Animated } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
+// --- ASSUMED I18N IMPORT ---
+import i18n from '@/lib/i18n'; 
+// ---------------------------
 
 type PharmacyScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -54,6 +57,8 @@ const ScreenHeader = ({ navigation, cartItemCount, theme, selectedState, selecte
       
       <Pressable
         style={styles.headerCartButton}
+        // NOTE: 'Cart' might need to be translated if your route names are translated, 
+        // but typically route names are static strings.
         onPress={() => navigation.navigate("Cart" as never)}
       >
         <Feather name="shopping-cart" size={24} color={theme.text} />
@@ -132,21 +137,24 @@ export default function PharmacyScreen() {
 
   const handleAddToCart = (product: Product) => {
     if (!user) {
-      Alert.alert("Login Required", "Please sign in to add items to cart");
+      Alert.alert(
+        i18n.t("login_required"), 
+        i18n.t("sign_in_add_to_cart")
+      );
       return;
     }
 
     if (product.isPrescriptionRequired) {
       Alert.alert(
-        "Prescription Required",
-        "This medicine requires a prescription. You'll need to upload it during checkout.",
+        i18n.t("prescription_required_title"),
+        i18n.t("prescription_required_body"),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: i18n.t("cancel"), style: "cancel" },
           { 
-            text: "Add Anyway", 
+            text: i18n.t("add_anyway"), 
             onPress: () => {
               addToCart(product, 1);
-              Alert.alert("Added!", `${product.name} added to cart`);
+              Alert.alert(i18n.t("success"), i18n.t("added_to_cart", { product: product.name }));
             }
           }
         ]
@@ -155,7 +163,7 @@ export default function PharmacyScreen() {
     }
 
     addToCart(product, 1);
-    Alert.alert("Added!", `${product.name} added to cart`);
+    Alert.alert(i18n.t("success"), i18n.t("added_to_cart", { product: product.name }));
   };
 
   const getCategoryColor = (category: string): string => {
@@ -212,55 +220,65 @@ export default function PharmacyScreen() {
     return filteredProducts.filter(p => (p.subcategory || "General Medicine") === category);
   };
 
-  const renderHeader = () => (
-    <Animated.View style={[styles.headerContainer, { backgroundColor: theme.cardBackground }]}>
-      <View>
-        <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: Spacing.sm }}>
-          {selectedState 
-            ? selectedCity
-              ? selectedArea
-                ? `Products in ${selectedArea}, ${selectedCity}`
-                : `Products in ${selectedCity}, ${selectedState}`
-              : `Products in ${selectedState}`
-            : "Medicines and health products you can trust"
-          }
-        </ThemedText>
-      </View>
+  const renderHeader = () => {
+    let locationText = i18n.t("medicines_and_health_products");
 
-      <SearchBar value={search} onChange={setSearch} />
-      
-      <ViewModeSelector selected={viewMode} onChange={setViewMode} />
-    </Animated.View>
-  );
+    if (selectedArea) {
+      locationText = `${i18n.t("products_in")} ${selectedArea}, ${selectedCity}`;
+    } else if (selectedCity) {
+      locationText = `${i18n.t("products_in")} ${selectedCity}, ${selectedState}`;
+    } else if (selectedState) {
+      locationText = `${i18n.t("products_in")} ${selectedState}`;
+    }
 
-  const renderEmpty = () => (
-    <View style={styles.empty}>
-      <Feather name="map-pin" size={64} color={theme.textSecondary} />
-      <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
-        No products in {selectedArea || selectedCity || selectedState || "this area"}
-      </ThemedText>
-      <ThemedText type="caption" style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
-        {selectedState 
-          ? "Try selecting a different location"
-          : "Check back later for new items"
-        }
-      </ThemedText>
-      {(selectedState || selectedCity || selectedArea) && (
-        <Pressable
-          style={[styles.clearFilter, { backgroundColor: theme.primary }]}
-          onPress={() => {
-            setSelectedState(null);
-            setSelectedCity(null);
-            setSelectedArea(null);
-          }}
-        >
-          <ThemedText lightColor="#fff" darkColor="#fff">
-            View All Locations
+    return (
+      <Animated.View style={[styles.headerContainer, { backgroundColor: theme.cardBackground }]}>
+        <View>
+          <ThemedText type="caption" style={{ color: theme.textSecondary, marginBottom: Spacing.sm }}>
+            {locationText}
           </ThemedText>
-        </Pressable>
-      )}
-    </View>
-  );
+        </View>
+
+        <SearchBar value={search} onChange={setSearch} />
+        
+        <ViewModeSelector selected={viewMode} onChange={setViewMode} />
+      </Animated.View>
+    );
+  };
+
+  const renderEmpty = () => {
+    const areaName = selectedArea || selectedCity || selectedState || i18n.t('this_area'); // Fallback key 'this_area' needed if area is dynamic. Assuming "this area" is already translated in "no_products_in_area"
+    
+    const subtitleKey = selectedState 
+      ? "try_different_location"
+      : "check_back_later_new_items";
+
+    return (
+      <View style={styles.empty}>
+        <Feather name="map-pin" size={64} color={theme.textSecondary} />
+        <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
+          {i18n.t("no_products_in_area", { area: areaName })}
+        </ThemedText>
+        <ThemedText type="caption" style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
+          {i18n.t(subtitleKey)}
+        </ThemedText>
+        {(selectedState || selectedCity || selectedArea) && (
+          <Pressable
+            style={[styles.clearFilter, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              setSelectedState(null);
+              setSelectedCity(null);
+              setSelectedArea(null);
+            }}
+          >
+            <ThemedText lightColor="#fff" darkColor="#fff">
+              {i18n.t("view_all_locations")}
+            </ThemedText>
+          </Pressable>
+        )}
+      </View>
+    );
+  };
 
   const renderCategoryList = () => {
     const categories = getCategories();
@@ -268,9 +286,9 @@ export default function PharmacyScreen() {
     return (
       <View style={styles.categoryListContainer}>
         <View style={styles.categoryListHeader}>
-          <ThemedText type="h3">Browse by Category</ThemedText>
+          <ThemedText type="h3">{i18n.t("browse_by_category")}</ThemedText>
           <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 4 }}>
-            {categories.length} categories available
+            {i18n.t("categories_available", { count: categories.length })}
           </ThemedText>
         </View>
 
@@ -294,7 +312,8 @@ export default function PharmacyScreen() {
               <View style={styles.categoryListInfo}>
                 <ThemedText type="defaultSemiBold">{category.name}</ThemedText>
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  {category.count} product{category.count !== 1 ? 's' : ''}
+                  {/* Using custom logic for pluralization in English based on original code */}
+                  {category.count} {i18n.t('product_count', { count: category.count }).replace('{{count}}', String(category.count))}
                 </ThemedText>
               </View>
             </View>
@@ -323,7 +342,8 @@ export default function PharmacyScreen() {
           <View style={styles.categoryProductsTitle}>
             <ThemedText type="h2" lightColor="#fff" darkColor="#fff">{selectedCategory}</ThemedText>
             <ThemedText type="caption" lightColor="rgba(255,255,255,0.8)" darkColor="rgba(255,255,255,0.8)">
-              {categoryProducts.length} product{categoryProducts.length !== 1 ? 's' : ''}
+              {/* Using custom logic for pluralization in English based on original code */}
+              {categoryProducts.length} {i18n.t('product_count', { count: categoryProducts.length }).replace('{{count}}', String(categoryProducts.length))}
             </ThemedText>
           </View>
         </View>
@@ -390,7 +410,7 @@ export default function PharmacyScreen() {
           {loading ? (
             <View style={styles.loading}>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                Loading products...
+                {i18n.t("loading_products")}
               </ThemedText>
             </View>
           ) : filteredProducts.length === 0 ? (
@@ -408,7 +428,7 @@ export default function PharmacyScreen() {
           {loading ? (
             <View style={styles.loading}>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                Loading products...
+                {i18n.t("loading_products")}
               </ThemedText>
             </View>
           ) : filteredProducts.length === 0 ? (

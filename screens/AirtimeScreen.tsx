@@ -337,6 +337,8 @@ export default function AirtimeScreen() {
 
 const styles = StyleSheet.create({
   container: {
+     paddingTop: 100,
+
     flex: 1,
   },
   content: {

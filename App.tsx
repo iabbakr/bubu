@@ -1,3 +1,4 @@
+// App.tsx - FINAL FIXED VERSION
 import React, { useEffect, useRef, useState } from "react";
 import { NavigationContainer, NavigationContainerRef } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -16,6 +17,9 @@ import { LanguageProvider } from "./context/LanguageContext";
 import { soundManager } from "./lib/soundManager";
 import { initI18n } from "./lib/i18n";
 import { ThemeProvider, useTheme } from "@/hooks/useTheme";
+import { notificationService, IncomingCallData } from './services/notificationService';
+import { IncomingCallModal } from './components/IncomingCallModal';
+import { professionalService } from "@/services/professionalService";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -25,12 +29,15 @@ Notifications.setNotificationHandler({
   }),
 });
 
-function NavigationWithNotifications() {
+// ✅ NEW: Separate component that uses auth and theme contexts
+function NavigationWithIncomingCalls() {
   const { user } = useAuth();
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
+  const [incomingCallData, setIncomingCallData] = useState<IncomingCallData | null>(null);
 
+  // Setup push notifications
   useEffect(() => {
     if (user) {
       pushNotificationService.registerForPushNotifications(user.uid);
@@ -40,12 +47,15 @@ function NavigationWithNotifications() {
       soundManager.play('signin');
     });
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      if (navigationRef.current) {
-        pushNotificationService.handleNotificationTap(data, navigationRef.current);
+    // 🎯 Fix 2 Applied Here: Explicitly typing the response for responseListener
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(
+      (response: Notifications.NotificationResponse) => {
+        const data: any = response.notification.request.content.data; // Explicitly type data as 'any'
+        if (navigationRef.current) {
+          pushNotificationService.handleNotificationTap(data, navigationRef.current);
+        }
       }
-    });
+    );
 
     return () => {
       notificationListener.current && Notifications.removeNotificationSubscription(notificationListener.current);
@@ -53,20 +63,70 @@ function NavigationWithNotifications() {
     };
   }, [user]);
 
+  // ✅ Listen for incoming video calls
+  useEffect(() => {
+    if (!user) return;
+
+    console.log('👂 Setting up incoming call listener for:', user.uid);
+
+    // 🎯 Fix 1 Applied Here: Renamed to 'listenForIncomingCalls'
+    const unsubscribe = notificationService.listenForIncomingCalls(user.uid, (data) => {
+        if (data) {
+            setIncomingCallData(data); // Show the modal
+        } else {
+            setIncomingCallData(null); // Hide the modal
+        }
+    });
+
+    return () => unsubscribe();
+}, [user?.uid]);
+
+
+  // ✅ Register push token
+  useEffect(() => {
+    if (!user) return;
+
+    const setupNotifications = async () => {
+      const token = await notificationService.registerForPushNotifications();
+      if (token) {
+        await notificationService.savePushToken(user.uid, token);
+        console.log('✅ Push notifications registered for user:', user.uid);
+      }
+    };
+
+    setupNotifications();
+  }, [user]);
+
   return (
-    <NavigationContainer ref={navigationRef}>
-      <MainTabNavigator />
-    </NavigationContainer>
+    <>
+      <NavigationContainer ref={navigationRef}>
+        <MainTabNavigator />
+      </NavigationContainer>
+      
+      {/* ✅ Incoming Call Modal - Now inside all providers */}
+      {incomingCallData && (
+        <IncomingCallModal
+          callData={incomingCallData}
+          onAccept={() => {
+            console.log('✅ Call accepted');
+            setIncomingCallData(null);
+          }}
+          onReject={() => {
+            console.log('❌ Call rejected');
+            setIncomingCallData(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
-// New component that uses useTheme INSIDE ThemeProvider
 function AppContent() {
   const { isDark } = useTheme();
 
   return (
     <>
-      <NavigationWithNotifications />
+      <NavigationWithIncomingCalls />
       <StatusBar style={isDark ? "light" : "dark"} />
     </>
   );
@@ -74,6 +134,19 @@ function AppContent() {
 
 export default function App() {
   const [isI18nReady, setIsI18nReady] = useState(false);
+
+  // Background tasks: emergency expiry, reminders, ready bookings
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        await professionalService.runBackgroundTasks();
+      } catch (error) {
+        console.warn("Background task failed:", error);
+      }
+    }, 30000); // Every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     initI18n().then(() => setIsI18nReady(true));
@@ -117,5 +190,10 @@ export default function App() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  loading: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
+  loading: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
 });

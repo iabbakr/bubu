@@ -325,10 +325,10 @@ const styles = StyleSheet.create({
   // Wishlist Button (used in both views)
   wishlistButton: {
     position: "absolute",
-    top: 8,
-    left: 8,   // ← Top-left, just like discount is top-right
-    width: 36,
-    height: 36,
+    top: 3,
+    left: 3,   // ← Top-left, just like discount is top-right
+    width: 26,
+    height: 26,
     borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",

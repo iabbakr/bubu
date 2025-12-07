@@ -1,4 +1,4 @@
-import { View, StyleSheet, Pressable, Image, Alert, Modal } from "react-native";
+import { View, StyleSheet, Pressable, Image, Alert, Modal, ActivityIndicator } from "react-native";
 import { useState } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -18,7 +18,7 @@ export default function CartScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const navigation = useNavigation();
-  const { items, removeFromCart, updateQuantity, clearCart, getSubtotal, getTotal } = useCart();
+  const { items, removeFromCart, updateQuantity, clearCart, getSubtotal, getTotal, loading: cartLoading } = useCart();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [couponCode, setCouponCode] = useState("");
@@ -29,6 +29,17 @@ export default function CartScreen() {
   const [prescriptions, setPrescriptions] = useState<Record<string, { uri: string; fileName: string; uploading: boolean }>>({});
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+
+  if (cartLoading) {
+    return (
+      <View style={[styles.empty, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+        <ThemedText type="body" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
+          Loading your cart...
+        </ThemedText>
+      </View>
+    );
+  }
 
   const handleApplyCoupon = async () => {
     if (!couponCode || !user) return;

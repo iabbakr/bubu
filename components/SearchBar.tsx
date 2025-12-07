@@ -1,6 +1,9 @@
 import { View, TextInput, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
+// --- ASSUMED I18N IMPORT ---
+import i18n from '@/lib/i18n'; 
+// ---------------------------
 
 interface SearchBarProps {
   value: string;
@@ -8,15 +11,18 @@ interface SearchBarProps {
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({ value, onChange }) => {
+  // Use the translated placeholder text
+  const placeholderText = i18n.t("search_products_placeholder");
+
   return (
     <View style={styles.container}>
       <Feather name="search" size={18} color="#555" />
       <TextInput
         style={styles.input}
-        placeholder="Search products..."
+        placeholder={placeholderText} // Translated string
         placeholderTextColor="#777"
         value={value}
-        onChangeText={onChange} // correct type now
+        onChangeText={onChange}
       />
     </View>
   );

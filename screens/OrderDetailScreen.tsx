@@ -9,8 +9,11 @@ import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { soundManager } from '../lib/soundManager';
-import { getDeliveryDescription, getDeliveryIcon, calculateDeliveryTimeframe } from "../utils/locationUtils";
+import { getDeliveryIcon, calculateDeliveryTimeframe } from "../utils/locationUtils";
 import { PrescriptionViewer } from "../components/PrescriptionViewer";
+// --- ASSUMED I18N IMPORT ---
+import i18n from '../lib/i18n'; 
+// ---------------------------
 
 type RouteParams = { orderId: string };
 type OrderTrackingStatus = "acknowledged" | "enroute" | "ready_for_pickup";
@@ -38,11 +41,11 @@ function SellerInfo({ sellerId }: { sellerId: string }) {
   };
 
   if (loading) {
-    return <ThemedText type="caption" style={{ color: theme.textSecondary }}>Loading seller info...</ThemedText>;
+    return <ThemedText type="caption" style={{ color: theme.textSecondary }}>{i18n.t("loading_seller_info")}</ThemedText>;
   }
 
   if (!seller) {
-    return <ThemedText type="caption" style={{ color: theme.textSecondary }}>Seller information unavailable</ThemedText>;
+    return <ThemedText type="caption" style={{ color: theme.textSecondary }}>{i18n.t("seller_info_unavailable")}</ThemedText>;
   }
 
   return (
@@ -52,7 +55,7 @@ function SellerInfo({ sellerId }: { sellerId: string }) {
           <Feather name="briefcase" size={18} color={theme.textSecondary} />
           <View style={{ flex: 1, marginLeft: Spacing.md }}>
             <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              Business Name
+              {i18n.t("business_name")}
             </ThemedText>
             <ThemedText weight="medium" style={{ marginTop: 2 }}>
               {seller.businessName}
@@ -66,7 +69,7 @@ function SellerInfo({ sellerId }: { sellerId: string }) {
           <Feather name="map-pin" size={18} color={theme.textSecondary} />
           <View style={{ flex: 1, marginLeft: Spacing.md }}>
             <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              Business Address
+              {i18n.t("business_address")}
             </ThemedText>
             <ThemedText weight="medium" style={{ marginTop: 2 }}>
               {seller.businessAddress}
@@ -80,7 +83,7 @@ function SellerInfo({ sellerId }: { sellerId: string }) {
           <Feather name="phone" size={18} color={theme.textSecondary} />
           <View style={{ flex: 1, marginLeft: Spacing.md }}>
             <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              Business Phone
+              {i18n.t("business_phone")}
             </ThemedText>
             <ThemedText weight="medium" style={{ marginTop: 2 }}>
               {seller.businessPhone}
@@ -123,7 +126,7 @@ export default function OrderDetailScreen() {
       }
     } catch (error) {
       console.error("Error loading order:", error);
-      Alert.alert("Error", "Failed to load order details");
+      Alert.alert(i18n.t("error"), i18n.t("fail_load_order_details"));
     } finally {
       setLoading(false);
     }
@@ -134,10 +137,10 @@ export default function OrderDetailScreen() {
 
     try {
       await firebaseService.updateOrderTracking(order.id, status);
-      Alert.alert("Success", `Order status updated to ${status?.replace("_", " ")}`);
+      Alert.alert(i18n.t("success"), i18n.t("status_updated"));
       loadOrder();
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to update order status");
+      Alert.alert(i18n.t("error"), error.message || i18n.t("failed_to_update"));
     }
   };
 
@@ -145,19 +148,19 @@ export default function OrderDetailScreen() {
     if (!order || !user) return;
 
     Alert.alert(
-      "Confirm Delivery",
-      "Have you received all items in good condition?",
+      i18n.t("confirm_receipt_title"),
+      i18n.t("confirm_receipt_body"),
       [
-        { text: "No, Open Dispute", onPress: () => setShowDisputeModal(true) },
+        { text: i18n.t("no_open_dispute_button"), onPress: () => setShowDisputeModal(true) },
         {
-          text: "Yes, Confirm",
+          text: i18n.t("yes_confirm_button"),
           onPress: async () => {
             try {
               await firebaseService.confirmOrderDelivery(order.id, user.uid);
-              Alert.alert("Success", "Order confirmed! Payment released to seller.");
+              Alert.alert(i18n.t("success"), i18n.t("order_confirmed_payment_released"));
               loadOrder();
             } catch (error: any) {
-              Alert.alert("Error", error.message);
+              Alert.alert(i18n.t("error"), error.message);
             }
           },
         },
@@ -168,7 +171,7 @@ export default function OrderDetailScreen() {
   const handleCancelOrder = async () => {
     if (!order || !user) return;
     if (!cancelReason.trim()) {
-      Alert.alert("Error", "Please provide a cancellation reason");
+      Alert.alert(i18n.t("error"), i18n.t("cancel_reason_details_error"));
       return;
     }
 
@@ -177,44 +180,44 @@ export default function OrderDetailScreen() {
       
       if (isBuyer) {
         await firebaseService.cancelOrderByBuyer(order.id, user.uid, cancelReason);
-        Alert.alert("Success", "Order cancelled successfully. You have been refunded.");
+        Alert.alert(i18n.t("success"), i18n.t("order_cancelled_buyer_refunded"));
       } else {
         await firebaseService.cancelOrderBySeller(order.id, user.uid, cancelReason);
-        Alert.alert("Success", "Order cancelled successfully. Buyer has been refunded.");
+        Alert.alert(i18n.t("success"), i18n.t("order_cancelled_seller_refunded"));
       }
       
       setShowCancelModal(false);
       setCancelReason("");
       loadOrder();
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      Alert.alert(i18n.t("error"), error.message);
     }
   };
 
   const handleOpenDispute = async () => {
     if (!order || !user) return;
     if (!disputeDetails.trim()) {
-      Alert.alert("Error", "Please describe the issue");
+      Alert.alert(i18n.t("error"), i18n.t("describe_issue_placeholder"));
       return;
     }
 
     try {
       await firebaseService.openDispute(order.id, user.uid, disputeDetails);
-      Alert.alert("Success", "Dispute opened. An admin will review it shortly.");
+      Alert.alert(i18n.t("success"), i18n.t("dispute_open_admin_review"));
       setShowDisputeModal(false);
       setDisputeDetails("");
       loadOrder();
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      Alert.alert(i18n.t("error"), error.message);
     }
   };
 
   const getTrackingSteps = () => {
     const steps = [
-      { key: "acknowledged", label: "Order Acknowledged", icon: "check-circle" },
-      { key: "enroute", label: "En Route", icon: "truck" },
-      { key: "ready_for_pickup", label: "Ready for Pickup", icon: "package" },
-      { key: "delivered", label: "Delivered", icon: "home" },
+      { key: "acknowledged", label: i18n.t("acknowledged"), icon: "check-circle" },
+      { key: "enroute", label: i18n.t("enroute"), icon: "truck" },
+      { key: "ready_for_pickup", label: i18n.t("ready_for_pickup"), icon: "package" },
+      { key: "delivered_status", label: i18n.t("delivered_status"), icon: "home" },
     ];
 
     const currentStatus = order?.trackingStatus || null;
@@ -228,15 +231,14 @@ export default function OrderDetailScreen() {
   };
 
   const getCancelModalTitle = () => {
-    if (!order || !user) return "Cancel Order";
-    const isBuyer = user.uid === order.buyerId;
-    return isBuyer ? "Cancel Order" : "Cancel Order";
+    if (!order || !user) return i18n.t("cancel_order");
+    return i18n.t("cancel_order");
   };
 
   // Get delivery timeframe based on locations
   const getDeliveryTimeframeInfo = () => {
     if (!order || !user || !seller) {
-      return "Delivery timeframe to be confirmed";
+      return i18n.t("delivery_timeframe_unconfirmed");
     }
 
     const timeframe = calculateDeliveryTimeframe(user.location, seller.location);
@@ -252,18 +254,18 @@ export default function OrderDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <ThemedText>Loading order details...</ThemedText>
+      <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ThemedText>{i18n.t("loading_order_details")}</ThemedText>
       </View>
     );
   }
 
   if (!order) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
         <Feather name="alert-circle" size={64} color={theme.textSecondary} />
         <ThemedText type="h3" style={{ marginTop: Spacing.lg, color: theme.textSecondary }}>
-          Order not found
+          {i18n.t("order_not_found")}
         </ThemedText>
       </View>
     );
@@ -273,6 +275,7 @@ export default function OrderDetailScreen() {
   const isSeller = user?.uid === order.sellerId;
   const isAdmin = user?.role === "admin";
   const deliveryInfo = getDeliveryTimeframeInfo();
+  const orderStatusKey = order.status; // 'running', 'delivered', or 'cancelled'
 
   return (
     <ScrollView 
@@ -285,15 +288,17 @@ export default function OrderDetailScreen() {
         {/* Order Header */}
         <View style={[styles.header, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <View style={{ flex: 1 }}>
-            <ThemedText type="h2">Order #{order.id.slice(-6)}</ThemedText>
+            <ThemedText type="h2">{i18n.t("order")} #{order.id.slice(-6)}</ThemedText>
             <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 4 }}>
-              Placed on {new Date(order.createdAt).toLocaleDateString()} at{" "}
-              {new Date(order.createdAt).toLocaleTimeString()}
+              {i18n.t("order_placed_on", {
+                  date: new Date(order.createdAt).toLocaleDateString(),
+                  time: new Date(order.createdAt).toLocaleTimeString(),
+              })}
             </ThemedText>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: theme.primary + "20" }]}>
             <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
-              {order.status.toUpperCase()}
+              {i18n.t(orderStatusKey).toUpperCase()}
             </ThemedText>
           </View>
         </View>
@@ -323,13 +328,13 @@ export default function OrderDetailScreen() {
             </View>
             <View style={{ flex: 1, marginLeft: Spacing.md }}>
               <ThemedText type="h4" style={{ fontWeight: "600" }}>
-                Estimated Delivery: {deliveryInfo.text}
+                {i18n.t("estimated_delivery")}: {deliveryInfo.text}
               </ThemedText>
               <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 4 }}>
                 {deliveryInfo.description}
               </ThemedText>
               <ThemedText type="caption" style={{ color: theme.warning, marginTop: 8, fontStyle: "italic" }}>
-                If not delivered within stated time, you can open a dispute for refund. T&C apply.
+                {i18n.t("dispute_refund_warning")}
               </ThemedText>
             </View>
           </View>
@@ -339,7 +344,7 @@ export default function OrderDetailScreen() {
         {order.status === "running" && (
           <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
             <ThemedText type="h3" style={{ marginBottom: Spacing.lg }}>
-              Order Tracking
+              {i18n.t("order_tracking_title")}
             </ThemedText>
             {getTrackingSteps().map((step, index) => (
               <View key={step.key} style={styles.trackingStep}>
@@ -372,7 +377,7 @@ export default function OrderDetailScreen() {
                   </ThemedText>
                   {step.active && (
                     <ThemedText type="caption" style={{ color: theme.primary, marginTop: 2 }}>
-                      Current Status
+                      {i18n.t("current_status")}
                     </ThemedText>
                   )}
                 </View>
@@ -385,13 +390,13 @@ export default function OrderDetailScreen() {
         {isSeller && order.status === "running" && (
           <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
             <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
-              Update Order Status
+              {i18n.t("status_updated")}
             </ThemedText>
 
             <View style={styles.trackingButtons}>
               {!order.trackingStatus && (
                 <PrimaryButton
-                  title="Acknowledge Order"
+                  title={i18n.t("acknowledge_order_button")}
                   onPress={() => updateOrderTracking("acknowledged")}
                   style={styles.trackingBtn}
                 />
@@ -399,7 +404,7 @@ export default function OrderDetailScreen() {
 
               {order.trackingStatus === "acknowledged" && (
                 <PrimaryButton
-                  title="Mark as En Route"
+                  title={i18n.t("mark_as_en_route_button")}
                   onPress={() => updateOrderTracking("enroute")}
                   style={styles.trackingBtn}
                 />
@@ -407,7 +412,7 @@ export default function OrderDetailScreen() {
 
               {order.trackingStatus === "enroute" && (
                 <PrimaryButton
-                  title="Ready for Pickup"
+                  title={i18n.t("ready_for_pickup_button")}
                   onPress={() => updateOrderTracking("ready_for_pickup")}
                   style={styles.trackingBtn}
                 />
@@ -416,75 +421,49 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* Products */}
+        {/* Products and Prescriptions */}
         <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
-            Order Items
+            {i18n.t("order_items_title")}
           </ThemedText>
 
           {order.products.map((item, index) => (
-            <View key={index} style={styles.productItem}>
-              <View style={[styles.productIcon, { backgroundColor: theme.backgroundSecondary }]}>
-                <Feather name="box" size={20} color={theme.primary} />
-              </View>
+            <View key={index}>
+              <View style={styles.productItem}>
+                <View style={[styles.productIcon, { backgroundColor: theme.backgroundSecondary }]}>
+                  <Feather name="box" size={20} color={theme.primary} />
+                </View>
 
-              <View style={{ flex: 1, marginLeft: Spacing.md }}>
-                <ThemedText weight="medium">{item.productName}</ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
-                  Quantity: {item.quantity} × ₦{item.price.toFixed(2)}
+                <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                  <ThemedText weight="medium">{item.productName}</ThemedText>
+                  <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+                    {i18n.t("quantity_label")}: {item.quantity} × ₦{item.price.toFixed(2)}
+                  </ThemedText>
+                </View>
+
+                <ThemedText weight="bold" style={{ color: theme.primary }}>
+                  ₦{(item.quantity * item.price).toFixed(2)}
                 </ThemedText>
               </View>
 
-              <ThemedText weight="bold" style={{ color: theme.primary }}>
-                ₦{(item.quantity * item.price).toFixed(2)}
-              </ThemedText>
+              {/* Show prescription if available */}
+              {item.prescriptionUrl && item.prescriptionFileName && (
+                <View style={{ marginLeft: Spacing["3xl"], marginRight: Spacing.md }}>
+                  <PrescriptionViewer
+                    prescriptionUrl={item.prescriptionUrl}
+                    prescriptionFileName={item.prescriptionFileName}
+                    productName={item.productName}
+                  />
+                </View>
+              )}
             </View>
           ))}
         </View>
 
-        {/* Products with Prescriptions */}
-<View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-  <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
-    Order Items
-  </ThemedText>
-
-  {order.products.map((item, index) => (
-    <View key={index}>
-      <View style={styles.productItem}>
-        <View style={[styles.productIcon, { backgroundColor: theme.backgroundSecondary }]}>
-          <Feather name="box" size={20} color={theme.primary} />
-        </View>
-
-        <View style={{ flex: 1, marginLeft: Spacing.md }}>
-          <ThemedText weight="medium">{item.productName}</ThemedText>
-          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
-            Quantity: {item.quantity} × ₦{item.price.toFixed(2)}
-          </ThemedText>
-        </View>
-
-        <ThemedText weight="bold" style={{ color: theme.primary }}>
-          ₦{(item.quantity * item.price).toFixed(2)}
-        </ThemedText>
-      </View>
-
-      {/* Show prescription if available */}
-      {item.prescriptionUrl && item.prescriptionFileName && (
-        <View style={{ marginLeft: Spacing["3xl"], marginRight: Spacing.md }}>
-          <PrescriptionViewer
-            prescriptionUrl={item.prescriptionUrl}
-            prescriptionFileName={item.prescriptionFileName}
-            productName={item.productName}
-          />
-        </View>
-      )}
-    </View>
-  ))}
-</View>
-
         {/* Seller Business Info */}
         <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
-            Seller Information
+            {i18n.t("seller_info_title")}
           </ThemedText>
           <SellerInfo sellerId={order.sellerId} />
         </View>
@@ -492,14 +471,14 @@ export default function OrderDetailScreen() {
         {/* Delivery Info */}
         <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
-            Delivery Information
+            {i18n.t("delivery_info_title")}
           </ThemedText>
 
           <View style={styles.infoRow}>
             <Feather name="map-pin" size={18} color={theme.textSecondary} />
             <View style={{ flex: 1, marginLeft: Spacing.md }}>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                Delivery Address
+                {i18n.t("delivery_address")}
               </ThemedText>
               <ThemedText weight="medium" style={{ marginTop: 2 }}>
                 {order.deliveryAddress}
@@ -512,7 +491,7 @@ export default function OrderDetailScreen() {
               <Feather name="phone" size={18} color={theme.textSecondary} />
               <View style={{ flex: 1, marginLeft: Spacing.md }}>
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  Phone Number
+                  {i18n.t("phone_number")}
                 </ThemedText>
                 <ThemedText weight="medium" style={{ marginTop: 2 }}>
                   {order.phoneNumber}
@@ -525,21 +504,21 @@ export default function OrderDetailScreen() {
         {/* Payment Summary */}
         <View style={[styles.section, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
           <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
-            Payment Summary
+            {i18n.t("payment_summary_title")}
           </ThemedText>
 
           <View style={styles.summaryRow}>
-            <ThemedText>Subtotal</ThemedText>
+            <ThemedText>{i18n.t("subtotal")}</ThemedText>
             <ThemedText>₦{order.totalAmount.toFixed(2)}</ThemedText>
           </View>
 
           <View style={styles.summaryRow}>
-            <ThemedText>Platform Fee (10%)</ThemedText>
+            <ThemedText>{i18n.t("platform_fee")}</ThemedText>
             <ThemedText>₦{order.commission.toFixed(2)}</ThemedText>
           </View>
 
           <View style={[styles.summaryRow, styles.totalRow, { borderTopColor: theme.border }]}>
-            <ThemedText type="h3">Total</ThemedText>
+            <ThemedText type="h3">{i18n.t("total")}</ThemedText>
             <ThemedText type="h3" style={{ color: theme.primary }}>
               ₦{order.totalAmount.toFixed(2)}
             </ThemedText>
@@ -552,7 +531,7 @@ export default function OrderDetailScreen() {
             <Feather name="alert-circle" size={24} color={theme.warning} />
             <View style={{ flex: 1, marginLeft: Spacing.md }}>
               <ThemedText weight="bold" style={{ color: theme.warning }}>
-                Dispute is Open
+                {i18n.t("dispute_is_open")}
               </ThemedText>
               <ThemedText type="caption" style={{ marginTop: 2 }}>
                 {order.disputeDetails}
@@ -568,7 +547,7 @@ export default function OrderDetailScreen() {
           {isBuyer &&
             order.status === "running" &&
             order.trackingStatus === "ready_for_pickup" && (
-              <PrimaryButton title="Confirm Delivery ✓" onPress={handleConfirmDelivery} />
+              <PrimaryButton title={i18n.t("confirm_delivery_button")} onPress={handleConfirmDelivery} />
             )}
 
           {/* Buyer Cancel Order - Only before acknowledgment */}
@@ -576,7 +555,7 @@ export default function OrderDetailScreen() {
             order.status === "running" &&
             !order.trackingStatus && (
               <PrimaryButton
-                title="Cancel Order"
+                title={i18n.t("cancel_order")}
                 onPress={() => setShowCancelModal(true)}
                 variant="outlined"
                 style={{ marginTop: Spacing.sm }}
@@ -588,7 +567,7 @@ export default function OrderDetailScreen() {
             order.status === "running" &&
             order.disputeStatus !== "open" && (
               <PrimaryButton
-                title="Open Dispute"
+                title={i18n.t("open_dispute_title")}
                 onPress={() => setShowDisputeModal(true)}
                 variant="outlined"
                 style={{ marginTop: Spacing.sm, gap: 5, }}
@@ -599,7 +578,7 @@ export default function OrderDetailScreen() {
           {(isBuyer || isSeller || isAdmin) &&
             order.disputeStatus === "open" && (
               <PrimaryButton
-                title="View Dispute Chat"
+                title={i18n.t("view_dispute_chat")}
                 onPress={() =>
                   navigation.navigate("DisputeChatScreen", { orderId: order.id })
                 }
@@ -611,7 +590,7 @@ export default function OrderDetailScreen() {
           {isSeller &&
             order.status === "running" && (
               <PrimaryButton
-                title="Cancel Order"
+                title={i18n.t("cancel_order")}
                 onPress={() => setShowCancelModal(true)}
                 variant="outlined"
                 style={{ marginTop: Spacing.sm }}
@@ -642,14 +621,14 @@ export default function OrderDetailScreen() {
               ]}
               value={cancelReason}
               onChangeText={setCancelReason}
-              placeholder="Reason for cancellation..."
+              placeholder={i18n.t("dispute_reason_placeholder")}
               placeholderTextColor={theme.textSecondary}
               multiline
               numberOfLines={4}
             />
 
             <PrimaryButton
-              title="Confirm Cancellation"
+              title={i18n.t("confirm_cancellation_button")}
               onPress={handleCancelOrder}
               style={{ marginTop: Spacing.md }}
             />
@@ -662,7 +641,7 @@ export default function OrderDetailScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
             <View style={styles.modalHeader}>
-              <ThemedText type="h3">Open Dispute</ThemedText>
+              <ThemedText type="h3">{i18n.t("open_dispute_title")}</ThemedText>
               <Pressable onPress={() => setShowDisputeModal(false)}>
                 <Feather name="x" size={24} color={theme.text} />
               </Pressable>
@@ -679,14 +658,14 @@ export default function OrderDetailScreen() {
               ]}
               value={disputeDetails}
               onChangeText={setDisputeDetails}
-              placeholder="Describe the issue..."
+              placeholder={i18n.t("describe_issue_placeholder")}
               placeholderTextColor={theme.textSecondary}
               multiline
               numberOfLines={6}
             />
 
             <PrimaryButton
-              title="Submit Dispute"
+              title={i18n.t("submit_dispute_button")}
               onPress={handleOpenDispute}
               style={{ marginTop: Spacing.md }}
             />
@@ -699,10 +678,11 @@ export default function OrderDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { 
-    flex: 1 
+    flex: 1 ,
+    paddingTop: 100,
   },
   scrollContent: {
-    paddingTop: 100,
+    paddingTop: Spacing.md,
     paddingBottom: 100,
   },
   content: { 
@@ -785,11 +765,13 @@ const styles = StyleSheet.create({
   actions: { 
     marginTop: Spacing.lg,
     marginBottom: Spacing.xl,
+    gap:10,
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
+    
   },
   modalContent: {
     borderTopLeftRadius: BorderRadius.lg,
