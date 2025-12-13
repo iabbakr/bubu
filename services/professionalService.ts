@@ -1,4 +1,4 @@
-// services/professionalService.ts - FINAL & FULLY WORKING VERSION
+// services/professionalService.ts - FINAL FIX: Typed Booking Variable
 import { db } from "../lib/firebase";
 import {
   collection,
@@ -11,19 +11,36 @@ import {
   where,
   orderBy,
   onSnapshot,
+  setDoc,
+  Timestamp,
 } from "firebase/firestore";
 import { soundManager } from '../lib/soundManager';
 import * as Notifications from 'expo-notifications';
-// Assuming ProfessionalType and User are imported from a relative service, 
-// using the simplified one from the first provided file for ProfessionalType
-// since the User interface definition is missing but implied by the second file.
-// For simplicity and completeness, ProfessionalType is defined as a union.
+import { notificationService } from './notificationService';
+import { createCallSession } from "./streamService"; 
 
+// --- CONSTANTS & TYPES ---
 type ProfessionalType = "doctor" | "pharmacist" | "therapist" | "dentist" | "lawyer";
 
-const MAX_DAILY_SLOTS = 10; // Maximum slots per day per professional
-const EMERGENCY_FEE = 10000; // Emergency consultation fee
-const EMERGENCY_RESPONSE_TIME = 10 * 60 * 1000; // 10 minutes in milliseconds
+const MAX_DAILY_SLOTS = 10; 
+const SLOT_DURATION_MINUTES = 30;
+const CONSULTATION_DURATION_MS = 30 * 60 * 1000;
+const NOTIFICATION_DELAY_MS = 1500; 
+
+// 🌟 CALL FLOW TIMING CONSTANTS
+const PROFESSIONAL_CONNECTION_DELAY_MS = 3000; // Wait for professional to connect
+const PATIENT_NOTIFICATION_DELAY_MS = 1500;   // Additional delay before patient notification
+
+const SLOT_LIMITS: Record<ProfessionalType, number> = {
+  doctor: MAX_DAILY_SLOTS,
+  therapist: MAX_DAILY_SLOTS,
+  dentist: MAX_DAILY_SLOTS,
+  lawyer: MAX_DAILY_SLOTS,
+  pharmacist: 20, 
+};
+
+const EMERGENCY_FEE = 10000;
+const EMERGENCY_RESPONSE_TIME = 10 * 60 * 1000; 
 
 export interface TimeSlot {
   id: string;
@@ -31,7 +48,8 @@ export interface TimeSlot {
   startTime: string;
   endTime: string;
   slotDuration: number;
-}
+  isEnabled: boolean;
+} 
 
 export interface Professional {
   uid: string;
@@ -57,6 +75,8 @@ export interface Professional {
   bio?: string;
   maxDailySlots?: number;
   acceptsEmergency?: boolean;
+  workplace?: string;
+  updatedAt?: number;
 }
 
 export interface Booking {
@@ -69,7 +89,7 @@ export interface Booking {
   time: string;
   consultationType: "video" | "chat";
   reason?: string;
-  status: "pending_confirmation" | "confirmed" | "ready" | "in_progress" | "completed" | "cancelled" | "rejected" | "emergency_pending" | "emergency_confirmed";
+  status: "pending_confirmation" | "confirmed" | "ready" | "in_progress" | "completed" | "cancelled" | "rejected" | "emergency_pending" | "emergency_confirmed" | "rejected_during_call";
   fee: number;
   queuePosition?: number;
   createdAt: number;
@@ -81,8 +101,14 @@ export interface Booking {
   canStartCall?: boolean;
   isEmergency?: boolean;
   emergencyDeadline?: number;
+  emergencyConfirmedAt?: number;
   callInitiatedBy?: string;
   callStartedAt?: number;
+  callEndedAt?: number;
+  sessionExpiresAt?: number;
+  rated?: boolean;
+  cancelReason?: string;
+  currentCallId?: string;
 }
 
 export interface Review {
@@ -96,16 +122,95 @@ export interface Review {
   createdAt: number;
 }
 
+// --- HELPER FUNCTIONS ---
+const parseTime = (time: string): number => {
+  const [timeStr, period] = time.split(' ');
+  let [hours, minutes] = timeStr.split(':').map(Number);
+  
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  
+  return hours * 60 + minutes;
+};
+
+const formatTime = (minutes: number): string => {
+  let hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  
+  if (hours > 12) hours -= 12;
+  if (hours === 0) hours = 12;
+  
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')} ${period}`;
+};
+
+const getScheduledTimestamp = (date: string, time: string): number => {
+  const [timeStr, period] = time.split(' ');
+  let [hours, minutes] = timeStr.split(':').map(Number);
+  
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  
+  const dateObj = new Date(date);
+  dateObj.setHours(hours, minutes, 0, 0);
+  return dateObj.getTime();
+};
+
+const generateTimeSlots = (startTime: string, endTime: string, duration: number): string[] => {
+  const slots: string[] = [];
+  const start = parseTime(startTime);
+  const end = parseTime(endTime);
+  
+  const finalDuration = duration > 0 ? duration : 30;
+
+  let current = start;
+  while (current < end) {
+    slots.push(formatTime(current));
+    current += finalDuration;
+  }
+  return slots;
+};
+
+const getDefaultAvailability = (): TimeSlot[] => {
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  return days.map((day, index) => ({
+    id: `slot_${day}`,
+    day,
+    startTime: '09:00 AM',
+    endTime: '05:00 PM',
+    slotDuration: SLOT_DURATION_MINUTES,
+    isEnabled: index < 5,
+  }));
+};
+
+// --- MAIN SERVICE ---
 export const professionalService = {
-  // ==================== PROFESSIONALS ====================
+  
+  // ==================== PROFESSIONAL DATA ====================
+  
+  async getProfessional(professionalId: string): Promise<Professional | null> {
+    const snap = await getDoc(doc(db, "users", professionalId));
+    if (!snap.exists()) return null;
+    
+    const data = snap.data() as Professional;
+    
+    if (!data.availability || data.availability.length === 0) {
+      data.availability = getDefaultAvailability();
+    }
+    
+    return data;
+  },
 
   async getAllProfessionals(): Promise<Professional[]> {
-    const q = query(
-      collection(db, "users"),
-      where("role", "==", "professional")
-    );
+    const q = query(collection(db, "users"), where("role", "==", "professional"));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => doc.data() as Professional);
+    return snapshot.docs.map((doc) => {
+      const data = doc.data() as Professional;
+      if (!data.availability || data.availability.length === 0) {
+        data.availability = getDefaultAvailability();
+      }
+      return data;
+    });
   },
 
   async getProfessionalsByType(type: ProfessionalType): Promise<Professional[]> {
@@ -115,12 +220,13 @@ export const professionalService = {
       where("professionalType", "==", type)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => doc.data() as Professional);
-  },
-
-  async getProfessional(professionalId: string): Promise<Professional | null> {
-    const snap = await getDoc(doc(db, "users", professionalId));
-    return snap.exists() ? (snap.data() as Professional) : null;
+    return snapshot.docs.map((doc) => {
+      const data = doc.data() as Professional;
+      if (!data.availability || data.availability.length === 0) {
+        data.availability = getDefaultAvailability();
+      }
+      return data;
+    });
   },
 
   async updateProfessionalStatus(professionalId: string, isOnline: boolean): Promise<void> {
@@ -137,109 +243,153 @@ export const professionalService = {
     });
   },
 
-  // ==================== AVAILABILITY ====================
+  async incrementConsultationsCompleted(professionalId: string): Promise<void> {
+    const professional = await this.getProfessional(professionalId);
+    if (professional) {
+      await updateDoc(doc(db, "users", professionalId), {
+        consultationsCompleted: (professional.consultationsCompleted || 0) + 1,
+      });
+    }
+  },
 
+  // ==================== AVAILABILITY & SLOTS ====================
+  
   async setAvailability(professionalId: string, availability: TimeSlot[]): Promise<void> {
-    await updateDoc(doc(db, "users", professionalId), {
-      availability,
+    const professional = await this.getProfessional(professionalId);
+    const enforce30Min = SLOT_LIMITS[professional?.professionalType || 'doctor'] === MAX_DAILY_SLOTS;
+
+    try {
+      const validatedAvailability = availability.map(slot => ({
+        id: slot.id,
+        day: slot.day,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        slotDuration: enforce30Min ? SLOT_DURATION_MINUTES : (Number(slot.slotDuration) || 30), 
+        isEnabled: slot.isEnabled !== false,
+      }));
+
+      await setDoc(
+        doc(db, "users", professionalId),
+        {
+          availability: validatedAvailability,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+
+    } catch (error) {
+      console.error('❌ Error saving availability:', error);
+      throw new Error('Failed to save availability. Please try again.');
+    }
+  },
+
+  async getRemainingDailySlots(professionalId: string, date: string): Promise<number> {
+    const professional = await this.getProfessional(professionalId);
+    if (!professional) return 0;
+
+    const maxSlots = SLOT_LIMITS[professional.professionalType] || MAX_DAILY_SLOTS;
+
+    const bookingsQuery = query(
+      collection(db, "bookings"),
+      where("professionalId", "==", professionalId),
+      where("date", "==", date),
+      where("status", "in", ["pending_confirmation", "confirmed", "ready", "in_progress", "emergency_pending", "emergency_confirmed"])
+    );
+    
+    const bookingsSnap = await getDocs(bookingsQuery);
+    const bookedCount = bookingsSnap.size;
+    
+    return Math.max(0, maxSlots - bookedCount);
+  },
+
+  async getAvailableSlots(professionalId: string, date: string): Promise<string[]> {
+    try {
+      const professional = await this.getProfessional(professionalId);
+      if (!professional) {
+        console.log('❌ Professional not found');
+        return [];
+      }
+
+      const remainingSlots = await this.getRemainingDailySlots(professionalId, date);
+      if (remainingSlots <= 0) {
+        console.log('❌ No remaining slots for this day');
+        return [];
+      }
+
+      const [year, month, day] = date.split('-').map(num => parseInt(num, 10));
+      const dateObj = new Date(year, month - 1, day);
+      
+      const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
+      
+      const dayAvailability = professional.availability?.find(
+        slot => slot.day === dayName && slot.isEnabled !== false
+      );
+      
+      if (!dayAvailability) {
+        console.log('❌ No availability for', dayName);
+        return [];
+      }
+
+      const slots = generateTimeSlots(
+        dayAvailability.startTime,
+        dayAvailability.endTime,
+        dayAvailability.slotDuration
+      );
+
+      const bookingsQuery = query(
+        collection(db, "bookings"),
+        where("professionalId", "==", professionalId),
+        where("date", "==", date),
+        where("status", "in", ["pending_confirmation", "confirmed", "ready", "in_progress", "emergency_pending", "emergency_confirmed"])
+      );
+      const bookingsSnap = await getDocs(bookingsQuery);
+      const bookedTimes = bookingsSnap.docs.map(doc => doc.data().time);
+
+      const availableSlots = slots.filter(slot => !bookedTimes.includes(slot));
+      
+      return availableSlots.slice(0, remainingSlots);
+    } catch (error) {
+      console.error('❌ Error getting available slots:', error);
+      return [];
+    }
+  },
+
+  // ==================== BOOKING - REGULAR ====================
+  
+  async updateBookingStatus(bookingId: string, status: Booking["status"]): Promise<void> {
+    await updateDoc(doc(db, "bookings", bookingId), {
+      status,
       updatedAt: Date.now(),
     });
   },
 
-  async getRemainingDailySlots(professionalId: string, date: string): Promise<number> {
+  async getPatientPendingBookingWithProfessional(patientId: string, professionalId: string): Promise<Booking | null> {
     const bookingsQuery = query(
       collection(db, "bookings"),
+      where("patientId", "==", patientId),
       where("professionalId", "==", professionalId),
-      where("date", "==", date),
       where("status", "in", ["pending_confirmation", "confirmed", "ready", "in_progress"])
     );
-    const bookingsSnap = await getDocs(bookingsQuery);
-    const bookedCount = bookingsSnap.size;
-    // Use MAX_DAILY_SLOTS constant here
-    return MAX_DAILY_SLOTS - bookedCount; 
+    
+    const snapshot = await getDocs(bookingsQuery);
+    if (snapshot.empty) return null;
+    
+    return snapshot.docs[0].data() as Booking;
   },
 
-  async getAvailableSlots(professionalId: string, date: string): Promise<string[]> {
-    const remainingSlots = await this.getRemainingDailySlots(professionalId, date);
-    if (remainingSlots <= 0) {
-      return [];
-    }
-
-    const professional = await this.getProfessional(professionalId);
-    if (!professional?.availability) return [];
-
-    const dateObj = new Date(date);
-    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
-    const dayAvailability = professional.availability.find(slot => slot.day === dayName);
-    if (!dayAvailability) return [];
-
-    const slots = this.generateTimeSlots(
-      dayAvailability.startTime,
-      dayAvailability.endTime,
-      dayAvailability.slotDuration
-    );
-
-    const bookingsQuery = query(
+  async getPatientActiveEmergency(patientId: string): Promise<Booking | null> {
+    const emergencyQuery = query(
       collection(db, "bookings"),
-      where("professionalId", "==", professionalId),
-      where("date", "==", date),
-      where("status", "in", ["pending_confirmation", "confirmed", "ready"])
+      where("patientId", "==", patientId),
+      where("isEmergency", "==", true),
+      where("status", "in", ["emergency_pending", "emergency_confirmed", "in_progress"])
     );
-    const bookingsSnap = await getDocs(bookingsQuery);
-    const bookedTimes = bookingsSnap.docs.map(doc => doc.data().time);
-
-    const availableSlots = slots.filter(slot => !bookedTimes.includes(slot));
     
-    return availableSlots.slice(0, remainingSlots);
+    const snapshot = await getDocs(emergencyQuery);
+    if (snapshot.empty) return null;
+    
+    return snapshot.docs[0].data() as Booking;
   },
-
-  generateTimeSlots(startTime: string, endTime: string, duration: number): string[] {
-    const slots: string[] = [];
-    const start = this.parseTime(startTime);
-    const end = this.parseTime(endTime);
-    
-    let current = start;
-    while (current < end) {
-      slots.push(this.formatTime(current));
-      current += duration;
-    }
-    return slots;
-  },
-
-  parseTime(time: string): number {
-    const [timeStr, period] = time.split(' ');
-    let [hours, minutes] = timeStr.split(':').map(Number);
-    
-    if (period === 'PM' && hours !== 12) hours += 12;
-    if (period === 'AM' && hours === 12) hours = 0;
-    
-    return hours * 60 + minutes;
-  },
-
-  formatTime(minutes: number): string {
-    let hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    const period = hours >= 12 ? 'PM' : 'AM';
-    
-    if (hours > 12) hours -= 12;
-    if (hours === 0) hours = 12;
-    
-    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')} ${period}`;
-  },
-
-  getScheduledTimestamp(date: string, time: string): number {
-    const [timeStr, period] = time.split(' ');
-    let [hours, minutes] = timeStr.split(':').map(Number);
-    
-    if (period === 'PM' && hours !== 12) hours += 12;
-    if (period === 'AM' && hours === 12) hours = 0;
-    
-    const dateObj = new Date(date);
-    dateObj.setHours(hours, minutes, 0, 0);
-    return dateObj.getTime();
-  },
-  
-  // ==================== REGULAR BOOKING ====================
 
   async createBooking(bookingData: {
     professionalId: string;
@@ -255,12 +405,21 @@ export const professionalService = {
     const professional = await this.getProfessional(bookingData.professionalId);
     if (!professional) throw new Error("Professional not found");
 
-    const remainingSlots = await this.getRemainingDailySlots(bookingData.professionalId, bookingData.date);
-    if (remainingSlots <= 0) {
-      throw new Error("No available slots for this date. Please choose another day.");
+    const availableSlots = await this.getAvailableSlots(bookingData.professionalId, bookingData.date);
+    if (!availableSlots.includes(bookingData.time)) {
+      throw new Error("The selected slot is no longer available. Please choose another time or date.");
+    }
+    
+    const existingBooking = await this.getPatientPendingBookingWithProfessional(
+      bookingData.patientId, 
+      bookingData.professionalId
+    );
+    
+    if (existingBooking) {
+      throw new Error(`You already have a pending consultation with ${bookingData.professionalName}. Please complete or cancel it first.`);
     }
 
-    const scheduledTimestamp = this.getScheduledTimestamp(bookingData.date, bookingData.time);
+    const scheduledTimestamp = getScheduledTimestamp(bookingData.date, bookingData.time);
 
     const booking: Omit<Booking, "id"> = {
         professionalId: bookingData.professionalId,
@@ -280,16 +439,11 @@ export const professionalService = {
         paymentStatus: "pending",
         canStartCall: false,
         isEmergency: false,
+        reason: bookingData.reason || undefined,
+        rated: false,
     };
 
-    let finalBooking: Record<string, any> = { ...booking };
-
-    if (bookingData.reason !== undefined && bookingData.reason !== null) {
-        finalBooking.reason = bookingData.reason;
-    } 
-    // Omit reason if null/undefined to avoid writing null to Firestore.
-
-    const ref = await addDoc(collection(db, "bookings"), finalBooking);
+    const ref = await addDoc(collection(db, "bookings"), booking);
     await updateDoc(ref, { id: ref.id });
 
     await soundManager.play('orderPlaced');
@@ -298,22 +452,33 @@ export const professionalService = {
     return snap.data() as Booking;
   },
 
-  // ==================== EMERGENCY CONSULTATION ====================
-
+  // ==================== EMERGENCY BOOKING ====================
+  
   async createEmergencyBooking(
     professionalId: string,
     patientId: string,
     patientName: string,
     professionalName: string,
-    reason?: string | null
+    reason: string | null,
+    walletService: any
   ): Promise<Booking> {
     const prof = await this.getProfessional(professionalId);
     if (!prof?.acceptsEmergency || !prof.isOnline) {
       throw new Error("This professional does not accept emergency consultations or is offline");
     }
 
+    const patientWallet = await walletService.getWallet(patientId);
+    if (patientWallet.balance < EMERGENCY_FEE) {
+      throw new Error(`Insufficient balance. Emergency consultation requires ₦${EMERGENCY_FEE.toLocaleString()}. Please add funds to your wallet.`);
+    }
+
+    const existingEmergency = await this.getPatientActiveEmergency(patientId);
+    if (existingEmergency) {
+      throw new Error("You already have an active emergency consultation. Please complete it first.");
+    }
+
     const now = Date.now();
-    const emergencyDeadline = now + EMERGENCY_RESPONSE_TIME; // Use constant
+    const emergencyDeadline = now + EMERGENCY_RESPONSE_TIME;
 
     const booking: Omit<Booking, "id"> = {
       professionalId,
@@ -323,9 +488,9 @@ export const professionalService = {
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       consultationType: "video",
-      reason: reason ?? "Emergency consultation",
+      reason: reason || "Emergency consultation",
       status: "emergency_pending",
-      fee: EMERGENCY_FEE, // Use constant
+      fee: EMERGENCY_FEE,
       queuePosition: 0,
       createdAt: now,
       updatedAt: now,
@@ -335,14 +500,13 @@ export const professionalService = {
       canStartCall: false,
       isEmergency: true,
       emergencyDeadline,
+      rated: false,
     };
 
     const ref = await addDoc(collection(db, "bookings"), booking);
     await updateDoc(ref, { id: ref.id });
 
     await soundManager.play('orderPlaced');
-
-    // Send notification to professional
     await this.notifyProfessionalEmergency(professionalId, ref.id, patientName);
 
     const snap = await getDoc(ref);
@@ -353,7 +517,7 @@ export const professionalService = {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "🚨 EMERGENCY CONSULTATION",
-        body: `${patientName} needs immediate help! Respond within 10 minutes.`,
+        body: `${patientName} needs immediate help! Respond within ${EMERGENCY_RESPONSE_TIME / 60000} minutes.`,
         sound: true,
         priority: Notifications.AndroidNotificationPriority.MAX,
       },
@@ -361,15 +525,15 @@ export const professionalService = {
     });
   },
 
-  // ==================== PROFESSIONAL CONFIRMS BOOKING ====================
-
+  // ==================== CONFIRMATION / REJECTION ====================
+  
   async confirmBooking(bookingId: string, professionalId: string, walletService: any): Promise<void> {
     const bookingRef = doc(db, "bookings", bookingId);
     const bookingSnap = await getDoc(bookingRef);
     
     if (!bookingSnap.exists()) throw new Error("Booking not found");
     const booking = bookingSnap.data() as Booking;
-
+    
     if (booking.professionalId !== professionalId) {
       throw new Error("Unauthorized");
     }
@@ -379,37 +543,25 @@ export const professionalService = {
       throw new Error("Booking already processed");
     }
 
-    // Deduct from patient wallet (Held)
+    if (booking.isEmergency && booking.emergencyDeadline && Date.now() > booking.emergencyDeadline) {
+      throw new Error("Emergency consultation request has expired");
+    }
+
     const patientWallet = await walletService.getWallet(booking.patientId);
     if (patientWallet.balance < booking.fee) {
       throw new Error("Patient has insufficient balance");
     }
 
-    patientWallet.balance -= booking.fee;
-    patientWallet.transactions.unshift({
-      id: Date.now().toString(),
-      type: "debit",
-      amount: booking.fee,
-      description: `${booking.isEmergency ? 'Emergency ' : ''}Consultation with ${booking.professionalName}`,
-      timestamp: Date.now(),
+    await walletService.debitWallet(booking.patientId, booking.fee, { 
+      description: `${booking.isEmergency ? 'Emergency ' : ''}Consultation Hold for ${booking.professionalName}` 
     });
-    await walletService.updateWallet(patientWallet);
+    
+    await walletService.creditPendingBalance(booking.professionalId, booking.fee, {
+      description: `${booking.isEmergency ? 'Emergency ' : 'Pending '}consultation from ${booking.patientName}`,
+    });
+    
     await soundManager.play('debit');
 
-    // Hold in professional's pending balance
-    const professionalWallet = await walletService.getWallet(booking.professionalId);
-    professionalWallet.pendingBalance += booking.fee;
-    professionalWallet.transactions.unshift({
-      id: Date.now().toString(),
-      type: "credit",
-      amount: booking.fee,
-      description: `${booking.isEmergency ? 'Emergency ' : 'Pending '}consultation from ${booking.patientName}`,
-      timestamp: Date.now(),
-      status: "pending",
-    });
-    await walletService.updateWallet(professionalWallet);
-
-    // Get queue position (for regular bookings)
     let queuePosition = 0;
     if (!booking.isEmergency) {
       const queueQuery = query(
@@ -423,58 +575,237 @@ export const professionalService = {
     }
 
     const newStatus = booking.isEmergency ? "emergency_confirmed" : "confirmed";
-    const canStartCall = booking.isEmergency; // Emergency can start immediately
 
     await updateDoc(bookingRef, {
       status: newStatus,
       queuePosition,
       confirmedAt: Date.now(),
+      emergencyConfirmedAt: booking.isEmergency ? Date.now() : null,
       paymentStatus: "held",
-      canStartCall,
+      canStartCall: false, 
       updatedAt: Date.now(),
     });
 
     await this.updateQueueCount(booking.professionalId);
     
     if (!booking.isEmergency && booking.scheduledTimestamp) {
-      await this.scheduleReminder(bookingId, booking.patientId, booking.professionalId, booking.scheduledTimestamp);
+      await this.scheduleReminder(booking.id, booking.patientId, booking.professionalId, booking.scheduledTimestamp);
     }
+    
+    await notificationService.sendLocalNotification(
+        "Consultation Confirmed! ✅",
+        `${booking.professionalName} has confirmed your consultation for ${booking.date} at ${booking.time}.`,
+        { bookingId: booking.id, type: 'booking_confirmed' }
+    );
 
     await soundManager.play('acknowledged');
   },
 
-  // ==================== INITIATE VIDEO CALL ====================
-
-  async initiateCall(bookingId: string, userId: string): Promise<void> {
+  async rejectBooking(bookingId: string, professionalId: string, reason?: string, walletService?: any): Promise<void> {
     const bookingRef = doc(db, "bookings", bookingId);
     const bookingSnap = await getDoc(bookingRef);
     
     if (!bookingSnap.exists()) throw new Error("Booking not found");
     const booking = bookingSnap.data() as Booking;
 
-    if (booking.patientId !== userId && booking.professionalId !== userId) {
-      throw new Error("Unauthorized to initiate call");
+    if (booking.professionalId !== professionalId) {
+      throw new Error("Unauthorized");
     }
-
-    const validStatuses = ["ready", "emergency_confirmed", "confirmed"];
-    if (!validStatuses.includes(booking.status)) {
-      throw new Error("Cannot start call at this time");
-    }
-
-    if (!booking.isEmergency && !booking.canStartCall) {
-      throw new Error("Call is not ready yet. Please wait for the scheduled time.");
+    
+    if (booking.status === "completed" || booking.status === "rejected" || booking.status === "cancelled") {
+      throw new Error("Cannot reject an already processed booking");
     }
 
     await updateDoc(bookingRef, {
-      status: "in_progress",
-      callInitiatedBy: userId,
-      callStartedAt: Date.now(),
+      status: "rejected",
+      cancelReason: reason || "Professional unavailable/Request declined",
       updatedAt: Date.now(),
     });
+
+    if (booking.paymentStatus === "held" && walletService) {
+        await walletService.refundHeldPayment(booking.professionalId, booking.patientId, booking.fee, {
+            description: `Refund for rejected consultation with ${booking.professionalName}`,
+        });
+        await updateDoc(bookingRef, {
+          paymentStatus: "refunded",
+        });
+    }
+
+    await this.updateQueueCount(booking.professionalId);
+    await soundManager.play('dispute');
+  },
+  
+  async rejectCall(bookingId: string, rejecterId: string): Promise<void> {
+    const bookingRef = doc(db, "bookings", bookingId);
+    const bookingSnap = await getDoc(bookingRef);
+    
+    if (!bookingSnap.exists()) throw new Error("Booking not found");
+    const booking = bookingSnap.data() as Booking;
+
+    if (booking.patientId !== rejecterId && booking.professionalId !== rejecterId) {
+      throw new Error("Unauthorized to reject call");
+    }
+
+    await updateDoc(bookingRef, {
+      status: "rejected_during_call",
+      cancelReason: `Call rejected by ${rejecterId === booking.professionalId ? 'Professional' : 'Patient'}.`,
+      callEndedAt: Date.now(),
+      currentCallId: null,
+      updatedAt: Date.now(),
+    });
+    
+    await soundManager.play('dispute');
+  },
+  
+  // ==================== CALL INITIATION - FIXED & TYPED ====================
+  
+  // 🔥 FIX: Explicitly cast 'booking' to Booking type
+  async initiateCall(bookingId: string, professionalId: string): Promise<string> {
+    const bookingRef = doc(db, "bookings", bookingId);
+    const bookingSnap = await getDoc(bookingRef);
+    
+    if (!bookingSnap.exists()) throw new Error("Booking not found");
+    
+    // ✅ FIX: TypeScript explicit casting
+    const booking = bookingSnap.data() as Booking; 
+
+    if (booking.professionalId !== professionalId) {
+      throw new Error("Only the professional can initiate a call");
+    }
+
+    // 1. Get User Data
+    const profDoc = await getDoc(doc(db, "users", professionalId));
+    const patDoc = await getDoc(doc(db, "users", booking.patientId));
+    const profData = profDoc.data();
+    const patData = patDoc.data();
+
+    // 2. Create Session on Backend
+    console.log("📡 Creating call on backend...");
+    const callId = await createCallSession(
+      bookingId,
+      professionalId,
+      booking.patientId,
+      profData?.name || "Professional",
+      patData?.name || "Patient"
+    );
+
+    // 3. Update Status: In Progress, but LOCKED for patient
+    await updateDoc(bookingRef, {
+      status: "in_progress",
+      currentCallId: callId,
+      callInitiatedBy: professionalId,
+      callStartedAt: Date.now(),
+      sessionExpiresAt: Date.now() + (30 * 60 * 1000), // 30 mins
+      canStartCall: false, // 🔒 LOCKED: Patient cannot click Join yet
+      updatedAt: Date.now(),
+    });
+
+    // 4. ⏳ BUFFER 1: Propagation Delay (2 seconds)
+    // Allows Stream servers to sync the new call ID globally
+    console.log("⏳ Waiting for propagation...");
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 5. Unlock for Patient
+    await updateDoc(bookingRef, {
+      canStartCall: true, // 🔓 UNLOCKED
+    });
+
+    // 6. ⏳ BUFFER 2: Notification Delay (1 second)
+    // Ensures Firestore has synced the unlock before the push notification hits
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 7. Send Notification
+    console.log("📲 Notifying patient...");
+    await notificationService.sendIncomingCallNotification({
+      callId: callId,
+      bookingId: bookingId,
+      callerName: profData?.name || "Professional",
+      callerImage: profData?.imageUrl,
+      callerId: professionalId,
+      receiverId: booking.patientId,
+      createdAt: Date.now(),
+      isEmergency: !!booking.isEmergency,
+    });
+
+    return callId;
+  },
+
+  async joinCall(bookingId: string, patientId: string): Promise<string> {
+    const bookingRef = doc(db, "bookings", bookingId);
+    const bookingSnap = await getDoc(bookingRef);
+    const booking = bookingSnap.data() as Booking; // Type cast here too
+
+    if (!booking) throw new Error("Booking not found");
+    if (!booking.currentCallId) throw new Error("No active call");
+    if (!booking.canStartCall) throw new Error("Call not ready");
+
+    return booking.currentCallId;
+  },
+
+  async completeBooking(bookingId: string, walletService: any): Promise<void> {
+    const bookingRef = doc(db, "bookings", bookingId);
+    
+    // First get the booking to know the fee and participants
+    const bookingSnap = await getDoc(bookingRef);
+    if (!bookingSnap.exists()) throw new Error("Booking not found");
+    const booking = bookingSnap.data() as Booking;
+
+    await updateDoc(bookingRef, {
+      status: "completed",
+      callEndedAt: Date.now(),
+      currentCallId: null,
+      updatedAt: Date.now(),
+    });
+
+    if (walletService) {
+        await walletService.releaseHeldPayment(booking.professionalId, booking.patientId, booking.fee, {
+            description: "Consultation completed"
+        });
+    }
+    
+    await soundManager.play('delivered');
+    await this.incrementConsultationsCompleted(booking.professionalId);
+    await this.updateQueueCount(booking.professionalId);
+    await this.updateQueuePositions(booking.professionalId, booking.date);
+  },
+
+  // ==================== BOOKINGS RETRIEVAL ====================
+  
+  async getPatientBookings(patientId: string): Promise<Booking[]> {
+    const q = query(
+      collection(db, "bookings"),
+      where("patientId", "==", patientId),
+      orderBy("createdAt", "desc")
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => doc.data() as Booking);
+  },
+
+  async getProfessionalBookings(professionalId: string): Promise<Booking[]> {
+    const q = query(
+      collection(db, "bookings"),
+      where("professionalId", "==", professionalId),
+      orderBy("createdAt", "desc")
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => doc.data() as Booking);
+  },
+  
+  async getCallHistory(userId: string, role: "patient" | "professional"): Promise<Booking[]> {
+    const q = query(
+      collection(db, "bookings"),
+      where(role === "patient" ? "patientId" : "professionalId", "==", userId),
+      where("status", "==", "completed"),
+      orderBy("callEndedAt", "desc")
+    );
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => doc.data() as Booking);
   },
 
   // ==================== QUEUE MANAGEMENT ====================
-
+  
   async updateQueueCount(professionalId: string): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
     const q = query(
@@ -487,6 +818,7 @@ export const professionalService = {
     
     await updateDoc(doc(db, "users", professionalId), {
       currentQueue: snapshot.size,
+      updatedAt: Date.now(),
     });
   },
 
@@ -506,15 +838,39 @@ export const professionalService = {
       updates.push(
         updateDoc(doc(db, "bookings", docSnap.id), {
           queuePosition: index + 1,
-        })
-      );
+        }))
     });
 
     await Promise.all(updates);
   },
+  
+  // ==================== REAL-TIME LISTENERS ====================
 
-  // ==================== BACKGROUND TASKS ====================
+  listenToBooking(bookingId: string, callback: (booking: Booking) => void) {
+    return onSnapshot(doc(db, "bookings", bookingId), (snap) => {
+      if (snap.exists()) {
+        callback(snap.data() as Booking);
+      }
+    });
+  },
+  
+  listenToQueue(professionalId: string, date: string, callback: (queue: Booking[]) => void) {
+    const q = query(
+      collection(db, "bookings"),
+      where("professionalId", "==", professionalId),
+      where("date", "==", date),
+      where("status", "in", ["confirmed", "ready"]),
+      orderBy("queuePosition", "asc")
+    );
 
+    return onSnapshot(q, (snapshot) => {
+      const queue = snapshot.docs.map((doc) => doc.data() as Booking);
+      callback(queue);
+    });
+  },
+
+  // ==================== BACKGROUND TASKS & REMINDERS ====================
+  
   async runBackgroundTasks() {
     await this.checkAndEnableReadyBookings();
     await this.checkAndExpireEmergencyBookings();
@@ -531,7 +887,7 @@ export const professionalService = {
 
   async checkAndEnableReadyBookings(): Promise<void> {
     const now = Date.now();
-    const bufferTime = 15 * 60 * 1000; // 15 minutes before
+    const bufferTime = 15 * 60 * 1000;
 
     const upcomingQuery = query(
       collection(db, "bookings"),
@@ -571,223 +927,17 @@ export const professionalService = {
           cancelReason: "Professional did not respond within 10 minutes",
           updatedAt: now,
         });
-
-        // Refund logic would typically be handled here
       }
     }
   },
-
-  // ==================== COMPLETE BOOKING ====================
-
-  async completeBooking(bookingId: string, walletService: any): Promise<void> {
-    const bookingRef = doc(db, "bookings", bookingId);
-    const bookingSnap = await getDoc(bookingRef);
-    
-    if (!bookingSnap.exists()) throw new Error("Booking not found");
-    const booking = bookingSnap.data() as Booking;
-
-    await updateDoc(bookingRef, {
-      status: "completed",
-      updatedAt: Date.now(),
-    });
-
-    // Release payment to professional
-    const professionalWallet = await walletService.getWallet(booking.professionalId);
-    professionalWallet.pendingBalance -= booking.fee;
-    professionalWallet.balance += booking.fee;
-    
-    professionalWallet.transactions.unshift({
-      id: Date.now().toString(),
-      type: "credit",
-      amount: booking.fee,
-      description: `${booking.isEmergency ? 'Emergency ' : ''}Consultation completed with ${booking.patientName}`,
-      timestamp: Date.now(),
-      status: "completed",
-    });
-    
-    await walletService.updateWallet(professionalWallet);
-    await soundManager.play('delivered');
-
-    await this.incrementConsultationsCompleted(booking.professionalId);
-    await this.updateQueueCount(booking.professionalId);
-    await this.updateQueuePositions(booking.professionalId, booking.date);
-  },
-
-  async incrementConsultationsCompleted(professionalId: string): Promise<void> {
-    const professional = await this.getProfessional(professionalId);
-    if (professional) {
-      await updateDoc(doc(db, "users", professionalId), {
-        consultationsCompleted: (professional.consultationsCompleted || 0) + 1,
-      });
-    }
-  },
-
-  // ==================== REJECT BOOKING ====================
-
-  async rejectBooking(bookingId: string, professionalId: string, reason?: string): Promise<void> {
-    const bookingRef = doc(db, "bookings", bookingId);
-    const bookingSnap = await getDoc(bookingRef);
-    
-    if (!bookingSnap.exists()) throw new Error("Booking not found");
-    const booking = bookingSnap.data() as Booking;
-
-    if (booking.professionalId !== professionalId) {
-      throw new Error("Unauthorized");
-    }
-
-    await updateDoc(bookingRef, {
-      status: "rejected",
-      cancelReason: reason || "Professional unavailable",
-      updatedAt: Date.now(),
-    });
-
-    await soundManager.play('dispute');
-    // Note: If payment was held, refund logic should also be here.
-  },
-
-  // ==================== BOOKINGS RETRIEVAL ====================
-
-  async getPatientBookings(patientId: string): Promise<Booking[]> {
-    const q = query(
-      collection(db, "bookings"),
-      where("patientId", "==", patientId),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => doc.data() as Booking);
-  },
-
-  async getProfessionalBookings(professionalId: string): Promise<Booking[]> {
-    const q = query(
-      collection(db, "bookings"),
-      where("professionalId", "==", professionalId),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => doc.data() as Booking);
-  },
-
-  async updateBookingStatus(bookingId: string, status: Booking["status"]): Promise<void> {
-    await updateDoc(doc(db, "bookings", bookingId), {
-      status,
-      updatedAt: Date.now(),
-    });
-  },
-
-  // ==================== REVIEWS ====================
-
-  async createReview(reviewData: Omit<Review, "id" | "createdAt">): Promise<void> {
-    const existingQuery = query(
-      collection(db, "reviews"),
-      where("bookingId", "==", reviewData.bookingId),
-      where("patientId", "==", reviewData.patientId)
-    );
-    const existing = await getDocs(existingQuery);
-    
-    if (!existing.empty) {
-      throw new Error("You have already reviewed this consultation");
-    }
-
-    const ref = await addDoc(collection(db, "reviews"), {
-        ...reviewData,
-        createdAt: Date.now(),
-    });
-    
-    await updateDoc(ref, { id: ref.id });
-    await this.updateProfessionalRating(reviewData.professionalId);
-  },
-
-  async getProfessionalReviews(professionalId: string): Promise<Review[]> {
-    const q = query(
-      collection(db, "reviews"),
-      where("professionalId", "==", professionalId),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Review[];
-  },
-
-  async updateProfessionalRating(professionalId: string): Promise<void> {
-    const reviews = await this.getProfessionalReviews(professionalId);
-    if (reviews.length === 0) return;
-
-    const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-    const averageRating = totalRating / reviews.length;
-
-    await updateDoc(doc(db, "users", professionalId), {
-      rating: Math.round(averageRating * 10) / 10,
-      reviewCount: reviews.length,
-    });
-  },
-
-  async getProfessionalStats(professionalId: string) {
-    const bookingsQuery = query(
-      collection(db, "bookings"),
-      where("professionalId", "==", professionalId)
-    );
-    const bookingsSnapshot = await getDocs(bookingsQuery);
-    const bookings = bookingsSnapshot.docs.map((doc) => doc.data() as Booking);
-
-    const completed = bookings.filter((b) => b.status === "completed").length;
-    const cancelled = bookings.filter((b) => b.status === "cancelled" || b.status === "rejected").length;
-    const emergencyCompleted = bookings.filter((b) => b.status === "completed" && b.isEmergency).length;
-    const totalEarnings = bookings
-      .filter((b) => b.status === "completed")
-      .reduce((sum, b) => sum + b.fee, 0);
-
-    const reviews = await this.getProfessionalReviews(professionalId);
-    const averageRating = reviews.length > 0
-      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-      : 0;
-
-    return {
-      totalBookings: bookings.length,
-      completedConsultations: completed,
-      cancelledConsultations: cancelled,
-      emergencyConsultations: emergencyCompleted,
-      totalEarnings,
-      averageRating: Math.round(averageRating * 10) / 10,
-      reviewCount: reviews.length,
-    };
-  },
-
-  // ==================== REAL-TIME LISTENERS ====================
-
-  listenToQueue(professionalId: string, date: string, callback: (queue: Booking[]) => void) {
-    const q = query(
-      collection(db, "bookings"),
-      where("professionalId", "==", professionalId),
-      where("date", "==", date),
-      where("status", "in", ["confirmed", "ready"]),
-      orderBy("queuePosition", "asc")
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const queue = snapshot.docs.map((doc) => doc.data() as Booking);
-      callback(queue);
-    });
-  },
-
-  listenToBooking(bookingId: string, callback: (booking: Booking) => void) {
-    return onSnapshot(doc(db, "bookings", bookingId), (snap) => {
-      if (snap.exists()) {
-        callback(snap.data() as Booking);
-      }
-    });
-  },
-
-  // ==================== REMINDERS ====================
-
+  
   async scheduleReminder(
     bookingId: string,
     patientId: string,
     professionalId: string,
     scheduledTime: number
   ): Promise<void> {
-    const reminderTime = scheduledTime - (15 * 60 * 1000); // 15 minutes before
+    const reminderTime = scheduledTime - (15 * 60 * 1000);
     
     if (reminderTime > Date.now()) {
       await Notifications.scheduleNotificationAsync({
@@ -796,21 +946,20 @@ export const professionalService = {
           body: "Your consultation starts in 15 minutes!",
           sound: true,
         },
-        trigger: {
-          date: new Date(reminderTime),
-        },
+        trigger: new Date(reminderTime), 
       });
     }
   },
 
   async checkAndSendReminders(): Promise<void> {
     const now = Date.now();
-    const reminderWindow = 15 * 60 * 1000;
+    const reminderWindow = 20 * 60 * 1000;
 
     const upcomingQuery = query(
       collection(db, "bookings"),
       where("status", "==", "confirmed"),
-      where("reminderSent", "==", false)
+      where("reminderSent", "==", false),
+      orderBy("scheduledTimestamp", "asc")
     );
 
     const snapshot = await getDocs(upcomingQuery);
@@ -825,7 +974,7 @@ export const professionalService = {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "Consultation Starting Soon!",
-            body: `Your consultation starts in ${Math.floor((booking.scheduledTimestamp - now) / 60000)} minutes`,
+            body: `Your consultation starts in ${Math.ceil((booking.scheduledTimestamp - now) / 60000)} minutes.`,
             sound: true,
           },
           trigger: null,
@@ -833,6 +982,7 @@ export const professionalService = {
 
         await updateDoc(doc(db, "bookings", booking.id), {
           reminderSent: true,
+          updatedAt: Date.now(),
         });
       }
     }

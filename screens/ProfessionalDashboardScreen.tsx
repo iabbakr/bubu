@@ -1,4 +1,5 @@
-// screens/ProfessionalDashboardScreen.tsx - FINAL WITH CALL BUTTON LOGIC
+// screens/ProfessionalDashboardScreen.tsx - FINAL FIX
+
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -13,21 +14,32 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  ActivityIndicator, 
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from 'expo-image-picker';
 import { ThemedText } from "../components/ThemedText";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useTheme } from "../hooks/useTheme";
 import { useAuth } from "../hooks/useAuth";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { professionalService, Booking, Professional, TimeSlot, Review } from "../services/professionalService";
-import { firebaseService } from "../services/firebaseService";
-import i18n from "../lib/i18n";
 import { useNavigation } from '@react-navigation/native';
+import { firebaseService } from "../services/firebaseService"; 
+import { walletService } from "../services/walletService"; 
+import { ConsultationModal, RatingModal } from "../components/ConsultationModal";
+import i18n from "../lib/i18n";
+import { uploadImageToCloudinary } from "../lib/cloudinary";
+
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const PLACEHOLDER_IMAGE = "https://via.placeholder.com/100x100/6366f1/ffffff?text=U";
+
 
 export default function ProfessionalDashboardScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const navigation = useNavigation<any>();
+
   const [profile, setProfile] = useState<Professional | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -39,28 +51,46 @@ export default function ProfessionalDashboardScreen() {
     averageRating: 0,
     reviewCount: 0,
   });
+  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
+  const [acceptsEmergency, setAcceptsEmergency] = useState(false);
+  
+  // Modals
   const [showAvailability, setShowAvailability] = useState(false);
   const [showReviews, setShowReviews] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showBookingDetails, setShowBookingDetails] = useState(false);
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [showConsultation, setShowConsultation] = useState(false);
+  
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
-  const [acceptsEmergency, setAcceptsEmergency] = useState(false); // ✅ Added
-
-  // Availability states
+  
+  // Availability state
   const [availability, setAvailability] = useState<TimeSlot[]>([]);
-  const [showConsultation, setShowConsultation] = useState(false); 
-const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
-
- const navigation = useNavigation<any>(); // Add this line
- 
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const [startDateInput, setStartDateInput] = useState('2024-01-01'); 
+  const [endDateInput, setEndDateInput] = useState('2099-12-31');
+  
+  // Profile editor state
+  const [editedProfile, setEditedProfile] = useState({
+    bio: "",
+    specialization: "",
+    yearsOfExperience: 0,
+    consultationFee: 0,
+    workplace: "",
+    languages: [] as string[],
+    imageUrl: "", 
+  });
+  const [languageInput, setLanguageInput] = useState("");
+  const [localImageUri, setLocalImageUri] = useState<string | null>(null); 
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
     
-    // Check for ready bookings every minute
     const interval = setInterval(() => {
       professionalService.checkAndEnableReadyBookings();
       professionalService.checkAndSendReminders();
@@ -79,8 +109,40 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
       if (profileData) {
         setProfile(profileData);
         setIsOnline(profileData.isOnline || false);
-        setAvailability(profileData.availability || []);
-        setAcceptsEmergency(profileData.acceptsEmergency || false); // ✅ Loaded
+        
+        let availabilityData = profileData.availability || [];
+        
+        // Ensure all 7 days exist with defaults
+        if (availabilityData.length < DAYS_OF_WEEK.length) {
+          const defaultSlots = DAYS_OF_WEEK.map((day, index) => ({
+            id: `slot_${day}`,
+            day,
+            startTime: '09:00 AM',
+            endTime: '05:00 PM',
+            slotDuration: 30,
+            isEnabled: index < 5, 
+          }));
+          
+          // Merge existing slots over defaults
+          availabilityData = defaultSlots.map(defaultSlot => {
+            const existing = availabilityData.find(slot => slot.day === defaultSlot.day);
+            return existing ? { ...defaultSlot, ...existing } : defaultSlot;
+          });
+        }
+        
+        setAvailability(availabilityData);
+        setAcceptsEmergency(profileData.acceptsEmergency || false);
+        
+        // Initialize profile editor
+        setEditedProfile({
+          bio: profileData.bio || "",
+          specialization: profileData.specialization || "",
+          yearsOfExperience: profileData.yearsOfExperience || 0,
+          consultationFee: profileData.consultationFee || 0,
+          workplace: profileData.workplace || "",
+          languages: profileData.languages || [],
+          imageUrl: profileData.imageUrl || "",
+        });
       }
 
       const bookingsData = await professionalService.getProfessionalBookings(user.uid);
@@ -97,6 +159,56 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+  
+  const handleImagePick = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please grant media library access to select a profile picture.');
+      return;
+    }
+    
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setLocalImageUri(result.assets[0].uri);
+    }
+  };
+  
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setUploadingImage(true);
+
+    try {
+      let finalImageUrl = editedProfile.imageUrl;
+      const updateData: Partial<Professional> = { ...editedProfile };
+
+      // 1. Handle image upload if a new one was selected
+      if (localImageUri) {
+        const uploadedUrl = await uploadImageToCloudinary(localImageUri, "professional_profiles");
+        finalImageUrl = uploadedUrl;
+      }
+      
+      updateData.imageUrl = finalImageUrl;
+      
+      // 2. Save profile data to Firestore (including new image URL)
+      await professionalService.updateProfessionalProfile(user.uid, updateData);
+      
+      Alert.alert(i18n.t("success"), "Profile updated successfully");
+      setShowProfileEditor(false);
+      setLocalImageUri(null);
+      loadDashboardData();
+    } catch (error) {
+      console.error("Failed to update profile:", error);
+      Alert.alert(i18n.t("error"), "Failed to update profile. Please try again.");
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -119,7 +231,7 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
     }
   };
 
-  const handleToggleEmergency = async (value: boolean) => { // ✅ Added Handler
+  const handleToggleEmergency = async (value: boolean) => {
     try {
       setAcceptsEmergency(value);
       await professionalService.updateProfessionalProfile(user!.uid, { acceptsEmergency: value });
@@ -133,14 +245,64 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
     }
   };
 
-  const handleViewBookingDetails = (booking: Booking) => {
-    setSelectedBooking(booking);
-    setShowBookingDetails(true);
+  const handleAddLanguage = () => {
+    if (languageInput.trim() && !editedProfile.languages.includes(languageInput.trim())) {
+      setEditedProfile({
+        ...editedProfile,
+        languages: [...editedProfile.languages, languageInput.trim()]
+      });
+      setLanguageInput("");
+    }
+  };
+
+  const handleRemoveLanguage = (lang: string) => {
+    setEditedProfile({
+      ...editedProfile,
+      languages: editedProfile.languages.filter(l => l !== lang)
+    });
+  };
+
+  const handleSaveAvailability = async () => {
+    try {
+      setSavingAvailability(true);
+      
+      const validSlots = availability.filter(slot => 
+        slot.day && slot.startTime && slot.endTime && slot.slotDuration > 0
+      );
+
+      if (validSlots.length === 0) {
+        Alert.alert(i18n.t("error"), "Please add at least one valid time slot");
+        return;
+      }
+
+      await professionalService.setAvailability(user!.uid, validSlots);
+      Alert.alert(i18n.t("success"), "Availability updated successfully");
+      setShowAvailability(false);
+      loadDashboardData();
+    } catch (error: any) {
+      console.error("Save availability error:", error);
+      Alert.alert(i18n.t("error"), error.message || "Failed to save availability");
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
+
+  const handleToggleDay = (id: string) => {
+    setAvailability(availability.map(slot =>
+      slot.id === id ? { ...slot, isEnabled: !slot.isEnabled } : slot
+    ));
+  };
+
+  const handleUpdateSlot = (id: string, field: keyof TimeSlot, value: any) => {
+    setAvailability(availability.map(slot =>
+      slot.id === id ? { ...slot, [field]: value } : slot
+    ));
   };
 
   const handleConfirmBooking = async (bookingId: string) => {
     try {
-      await professionalService.confirmBooking(bookingId, user!.uid, firebaseService);
+      // 🌟 FIX: Pass walletService instead of firebaseService
+      await professionalService.confirmBooking(bookingId, user!.uid, walletService); 
       Alert.alert(i18n.t("success"), i18n.t("booking_confirmed"));
       setShowBookingDetails(false);
       loadDashboardData();
@@ -156,7 +318,8 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
     }
 
     try {
-      await professionalService.rejectBooking(bookingId, user!.uid, rejectionReason);
+      // 🌟 FIX: Pass walletService instead of firebaseService
+      await professionalService.rejectBooking(bookingId, user!.uid, rejectionReason, walletService);
       Alert.alert(i18n.t("success"), i18n.t("booking_rejected"));
       setShowBookingDetails(false);
       setRejectionReason("");
@@ -167,71 +330,44 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
   };
 
   const handleStartConsultation = async (bookingId: string) => {
-    // 1. Find the booking object
     const bookingToStart = bookings.find(b => b.id === bookingId);
-    if (!bookingToStart || !profile) {
-        Alert.alert(i18n.t("error"), "Booking or Profile data missing.");
+    if (!bookingToStart || !user || !profile) {
+        Alert.alert(i18n.t("error"), "Booking or profile not found");
         return;
     }
 
-    // 2. Set current booking and open the consultation modal
-    setCurrentBooking(bookingToStart);
-    setShowConsultation(true);
-
     try {
-      // ⚠️ Important: This function only updates the status to 'in_progress'. 
-      // The actual video call initiation logic is handled client-side (e.g., in a ConsultationModal).
-      // Here, we just set the status to allow the professional to enter the video flow.
-      await professionalService.updateBookingStatus(bookingId, "in_progress");
-      //Alert.alert(i18n.t("success"), i18n.t("consultation_status_updated"));
-      //loadDashboardData();
-    } catch (error) {
-      Alert.alert(i18n.t("error"), i18n.t("failed_to_start"));
+      // 🔥 FIX: Use the service method that initiates the call and sends the notification
+      const callId = await professionalService.initiateCall(bookingId, user.uid);
+      
+      const updatedBooking: Booking = { 
+        ...bookingToStart, 
+        status: "in_progress",
+        callStartedAt: bookingToStart.callStartedAt || Date.now(),
+        callInitiatedBy: user.uid,
+        canStartCall: true,
+        currentCallId: callId,
+      };
+
+      setCurrentBooking(updatedBooking);
+      setShowConsultation(true);
+      
+      loadDashboardData();
+    } catch (error: any) {
+      console.error("Call initiation failed:", error);
+      Alert.alert(i18n.t("error"), error.message || "Failed to start consultation");
     }
   };
 
   const handleCompleteConsultation = async (bookingId: string) => {
     try {
-      await professionalService.completeBooking(bookingId, firebaseService);
-      Alert.alert(i18n.t("success"), i18n.t("consultation_completed_payment_received"));
+      // 🌟 FIX: Pass walletService instead of firebaseService
+      await professionalService.completeBooking(bookingId, walletService);
+      Alert.alert(i18n.t("success"), "Consultation completed. Payment received.");
       loadDashboardData();
     } catch (error) {
-      Alert.alert(i18n.t("error"), i18n.t("failed_to_complete"));
+      Alert.alert(i18n.t("error"), "Failed to complete consultation");
     }
-  };
-
-  const handleSaveAvailability = async () => {
-    try {
-      await professionalService.setAvailability(user!.uid, availability);
-      Alert.alert(i18n.t("success"), i18n.t("availability_updated"));
-      setShowAvailability(false);
-      loadDashboardData();
-    } catch (error) {
-      Alert.alert(i18n.t("error"), i18n.t("failed_to_update"));
-    }
-  };
-
-  const handleAddAvailabilitySlot = () => {
-    setAvailability([
-      ...availability,
-      {
-        id: Date.now().toString(),
-        day: "Monday",
-        startTime: "09:00 AM",
-        endTime: "05:00 PM",
-        slotDuration: 30,
-      },
-    ]);
-  };
-
-  const handleRemoveAvailabilitySlot = (id: string) => {
-    setAvailability(availability.filter(slot => slot.id !== id));
-  };
-
-  const handleUpdateAvailabilitySlot = (id: string, field: keyof TimeSlot, value: any) => {
-    setAvailability(availability.map(slot =>
-      slot.id === id ? { ...slot, [field]: value } : slot
-    ));
   };
 
   const renderStatCard = (icon: string, label: string, value: string | number, color: string) => (
@@ -264,180 +400,163 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
     switch (status) {
       case "emergency_pending": return "EMERGENCY PENDING";
       case "emergency_confirmed": return "EMERGENCY ACCEPTED";
-      case "pending_confirmation": return i18n.t("pending_confirmation");
-      case "confirmed": return i18n.t("confirmed");
-      case "ready": return i18n.t("ready_to_start");
-      case "in_progress": return i18n.t("in_progress");
-      case "completed": return i18n.t("completed");
-      case "cancelled": return i18n.t("cancelled");
-      case "rejected": return i18n.t("rejected");
+      case "pending_confirmation": return "Pending Confirmation";
+      case "confirmed": return "Confirmed";
+      case "ready": return "Ready to Start";
+      case "in_progress": return "In Progress";
+      case "completed": return "Completed";
+      case "cancelled": return "Cancelled";
+      case "rejected": return "Rejected";
       default: return status;
     }
   };
 
-  const renderBookingCard = (booking: Booking) => {
-    const isUpcoming = booking.scheduledTimestamp && booking.scheduledTimestamp > Date.now();
-    const timeUntil = booking.scheduledTimestamp 
-      ? Math.floor((booking.scheduledTimestamp - Date.now()) / 60000)
-      : 0;
+// ProfessionalDashboardScreen.tsx - FIXED: Always show queue counter
+// Key changes:
+// - **FIX: Added 'ready' status to the Start Consultation button logic.**
+// - Show queue position for ALL patients, not just professionals
+// - Fixed button visibility logic for confirmed bookings
 
-    return (
-      <Pressable
-        key={booking.id}
-        style={[styles.bookingCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
-        onPress={() => handleViewBookingDetails(booking)}
-      >
-        {booking.isEmergency && booking.status === "emergency_pending" && (
-          <View style={[styles.emergencyBanner, { backgroundColor: theme.error }]}>
-            <Feather name="zap" size={18} color="#fff" />
-            <ThemedText lightColor="#fff" weight="bold" style={{ marginLeft: 8 }}>
-              EMERGENCY - RESPOND NOW!
-            </ThemedText>
-          </View>
-        )}
-        <View style={styles.bookingHeader}>
-          <View style={{ flex: 1 }}>
-            <ThemedText weight="medium">{booking.patientName}</ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
-              {booking.date} at {booking.time}
-            </ThemedText>
-            {booking.queuePosition && booking.queuePosition > 0 && (
-              <View style={[styles.queueBadge, { backgroundColor: theme.primary + "20" }]}>
-                <ThemedText type="caption" weight="medium" style={{ color: theme.primary }}>
-                  {i18n.t("queue_position", { position: booking.queuePosition })}
-                </ThemedText>
-              </View>
-            )}
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(booking.status) + "20" }]}>
-            <ThemedText type="caption" weight="medium" style={{ color: getStatusColor(booking.status) }}>
-              {getStatusLabel(booking.status)}
-            </ThemedText>
-          </View>
-        </View>
+const renderBookingCard = (booking: Booking) => {
+  const isUpcoming = booking.scheduledTimestamp && booking.scheduledTimestamp > Date.now();
+  const timeUntil = booking.scheduledTimestamp 
+    ? Math.floor((booking.scheduledTimestamp - Date.now()) / 60000)
+    : 0;
 
-        {isUpcoming && (booking.status === "confirmed" || booking.status === "ready") && timeUntil > 0 && (
-          <View style={[styles.timerBox, { backgroundColor: theme.warning + "20", borderColor: theme.warning }]}>
-            <Feather name="clock" size={16} color={theme.warning} />
-            <ThemedText type="caption" style={{ color: theme.warning, marginLeft: Spacing.xs }}>
-              {timeUntil < 60 
-                ? `${i18n.t("starts_in")} ${timeUntil} ${i18n.t("minutes")}` 
-                : `${i18n.t("starts_in")} ${Math.floor(timeUntil / 60)} ${i18n.t("hours")}`}
-            </ThemedText>
-          </View>
-        )}
-
-        {booking.reason && (
-          <View style={[styles.reasonBox, { backgroundColor: theme.backgroundSecondary }]}>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {i18n.t("reason")}: {booking.reason}
-            </ThemedText>
-          </View>
-        )}
-
-        <View style={styles.bookingFooter}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.xs }}>
-            <Feather name="video" size={14} color={theme.textSecondary} />
-            <ThemedText type="caption">{booking.consultationType}</ThemedText>
-          </View>
-          <ThemedText weight="medium" style={{ color: theme.primary }}>
-            ₦{booking.fee.toLocaleString()}
+  return (
+    <Pressable
+      key={booking.id}
+      style={[styles.bookingCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+      onPress={() => {
+        setSelectedBooking(booking);
+        setShowBookingDetails(true);
+      }}
+    >
+      {booking.isEmergency && booking.status === "emergency_pending" && (
+        <View style={[styles.emergencyBanner, { backgroundColor: theme.error }]}>
+          <Feather name="zap" size={18} color="#fff" />
+          <ThemedText lightColor="#fff" weight="bold" style={{ marginLeft: 8 }}>
+            EMERGENCY - RESPOND NOW!
           </ThemedText>
         </View>
-
-        {/* ✅ UPDATED ACTION BUTTONS LOGIC */}
-        <View style={styles.actionButtons}>
-            {(booking.status === "pending_confirmation" || booking.status === "emergency_pending") && (
-                <>
-                <PrimaryButton
-                    title={i18n.t("confirm")}
-                    onPress={() => handleViewBookingDetails(booking)}
-                    style={{ flex: 1, marginRight: Spacing.xs }}
-                />
-                <PrimaryButton
-                    title={i18n.t("reject")}
-                    onPress={() => handleViewBookingDetails(booking)}
-                    variant="outlined"
-                    style={{ flex: 1 }}
-                />
-                // Inside the Quick Actions section, after the existing buttons
-
-                </>
-            )}
-
-            {/* Ready to Start: Scheduled (ready status) OR Confirmed Emergency */}
-            {(booking.status === "ready" || booking.status === "emergency_confirmed") && booking.canStartCall && (
-                <PrimaryButton
-                title={i18n.t("start_consultation")}
-                onPress={() => handleStartConsultation(booking.id)} // Sets status to 'in_progress'
-                style={{ flex: 1 }}
-                />
-            )}
-            
-            {/* In Progress: Show continue and complete */}
-            {booking.status === "in_progress" && (
-                <>
-                    <PrimaryButton
-                        title={i18n.t("continue_consultation")}
-                        onPress={() => handleStartConsultation(booking.id)} // Resumes/Triggers call flow
-                        style={{ flex: 1, marginRight: Spacing.xs }}
-                    />
-                    <PrimaryButton
-                        title={i18n.t("complete_receive_payment")}
-                        onPress={() => handleCompleteConsultation(booking.id)}
-                        variant="outlined"
-                        style={{ flex: 1 }}
-                    />
-                </>
-            )}
-
-            {/* Confirmed but not yet ready (Scheduled only) */}
-            {booking.status === "confirmed" && !booking.canStartCall && (
-                <ThemedText type="caption" style={{ color: theme.textSecondary, alignSelf: 'center', paddingVertical: Spacing.sm }}>
-                    {i18n.t("call_starts_15_mins_before")}
-                </ThemedText>
-            )}
-        </View>
-      </Pressable>
-    );
-  };
-
-  const renderReviewCard = (review: Review) => (
-    <View
-      key={review.id}
-      style={[styles.reviewCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
-    >
-      <View style={styles.reviewHeader}>
+      )}
+      
+      <View style={styles.bookingHeader}>
         <View style={{ flex: 1 }}>
-          <ThemedText weight="medium">{review.patientName}</ThemedText>
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
-            {[...Array(5)].map((_, i) => (
-              <Feather
-                key={i}
-                name="star"
-                size={14}
-                color={i < review.rating ? "#fbbf24" : theme.border}
-                style={{ marginRight: 2 }}
-              />
-            ))}
-          </View>
+          <ThemedText weight="medium">{booking.patientName}</ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
+            {booking.date} at {booking.time}
+          </ThemedText>
+          
+          {/* 🔥 FIX: Always show queue position for everyone */}
+          {booking.queuePosition && booking.queuePosition > 0 && (
+            <View style={[styles.queueBadge, { backgroundColor: theme.primary + "20", marginTop: Spacing.xs }]}>
+              <ThemedText type="caption" weight="medium" style={{ color: theme.primary }}>
+                Queue Position #{booking.queuePosition}
+              </ThemedText>
+            </View>
+          )}
         </View>
-        <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-          {new Date(review.createdAt).toLocaleDateString()}
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(booking.status) + "20" }]}>
+          <ThemedText type="caption" weight="medium" style={{ color: getStatusColor(booking.status) }}>
+            {getStatusLabel(booking.status)}
+          </ThemedText>
+        </View>
+      </View>
+
+      {isUpcoming && (booking.status === "confirmed" || booking.status === "ready") && timeUntil > 0 && (
+        <View style={[styles.timerBox, { backgroundColor: theme.warning + "20", borderColor: theme.warning }]}>
+          <Feather name="clock" size={16} color={theme.warning} />
+          <ThemedText type="caption" style={{ color: theme.warning, marginLeft: Spacing.xs }}>
+            {timeUntil < 60 
+              ? `Starts in ${timeUntil} minutes` 
+              : `Starts in ${Math.floor(timeUntil / 60)} hours`}
+          </ThemedText>
+        </View>
+      )}
+
+      {booking.reason && (
+        <View style={[styles.reasonBox, { backgroundColor: theme.backgroundSecondary }]}>
+          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+            Reason: {booking.reason}
+          </ThemedText>
+        </View>
+      )}
+
+      <View style={styles.bookingFooter}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.xs }}>
+          <Feather name="video" size={14} color={theme.textSecondary} />
+          <ThemedText type="caption">{booking.consultationType}</ThemedText>
+        </View>
+        <ThemedText weight="medium" style={{ color: theme.primary }}>
+          ₦{booking.fee.toLocaleString()}
         </ThemedText>
       </View>
-      {review.comment && (
-        <ThemedText style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
-          "{review.comment}"
-        </ThemedText>
-      )}
-    </View>
+
+      <View style={styles.actionButtons}>
+          {(booking.status === "pending_confirmation" || booking.status === "emergency_pending") && (
+              <>
+              <PrimaryButton
+                  title="Confirm"
+                  onPress={() => {
+                    setSelectedBooking(booking);
+                    setShowBookingDetails(true);
+                  }}
+                  style={{ flex: 1, marginRight: Spacing.xs }}
+              />
+              <PrimaryButton
+                  title="Reject"
+                  onPress={() => {
+                    setSelectedBooking(booking);
+                    setShowBookingDetails(true);
+                  }}
+                  variant="outlined"
+                  style={{ flex: 1 }}
+              />
+              </>
+          )}
+
+          {/* 🌟 FIX: Show "Start Consultation" for confirmed, emergency_confirmed, OR ready statuses */}
+          {(booking.status === "confirmed" || booking.status === "emergency_confirmed" || booking.status === "ready") && (
+              <PrimaryButton
+              title="Start Consultation"
+              onPress={() => handleStartConsultation(booking.id)}
+              style={{ flex: 1 }}
+              />
+          )}
+          
+          {/* 🔥 FIX: Show Continue/Complete only for in_progress */}
+          {booking.status === "in_progress" && (
+              <>
+                  <PrimaryButton
+                      title="Continue"
+                      onPress={() => handleStartConsultation(booking.id)}
+                      style={{ flex: 1, marginRight: Spacing.xs }}
+                  />
+                  <PrimaryButton
+                      title="Complete"
+                      onPress={() => handleCompleteConsultation(booking.id)}
+                      variant="outlined"
+                      style={{ flex: 1 }}
+                  />
+              </>
+          )}
+
+          {/* Remove the redundant 'ready' message since the button is now visible when 'ready' */}
+          {/* {booking.status === "ready" && !booking.canStartCall && (
+              <ThemedText type="caption" style={{ color: theme.textSecondary, alignSelf: 'center', paddingVertical: Spacing.sm }}>
+                  Call available 15 mins before scheduled time
+              </ThemedText>
+          )} */}
+      </View>
+    </Pressable>
   );
+};
 
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background, justifyContent: "center", alignItems: "center" }]}>
-        <ThemedText>{i18n.t("loading")}...</ThemedText>
+        <ThemedText>Loading...</ThemedText>
       </View>
     );
   }
@@ -445,7 +564,7 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
   if (!profile) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background, justifyContent: "center", alignItems: "center" }]}>
-        <ThemedText>{i18n.t("profile_not_found")}</ThemedText>
+        <ThemedText>Profile not found</ThemedText>
       </View>
     );
   }
@@ -480,8 +599,17 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
                 {profile.professionalType?.toUpperCase()} • {profile.specialization}
               </ThemedText>
               
+              {profile.workplace && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                  <Feather name="briefcase" size={12} color={theme.textSecondary} />
+                  <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+                    {profile.workplace}
+                  </ThemedText>
+                </View>
+              )}
+              
               <View style={styles.onlineToggle}>
-                <ThemedText weight="medium">{i18n.t("available_for_consultations")}</ThemedText>
+                <ThemedText weight="medium">Available for consultations</ThemedText>
                 <Switch
                   value={isOnline}
                   onValueChange={handleToggleOnline}
@@ -489,9 +617,9 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
                   thumbColor={isOnline ? theme.success : theme.textSecondary}
                 />
               </View>
-              {/* ✅ NEW EMERGENCY TOGGLE */}
+
               <View style={[styles.onlineToggle, { marginTop: Spacing.sm }]}>
-                  <ThemedText weight="medium">{i18n.t("accept_emergency")}</ThemedText>
+                  <ThemedText weight="medium">Accept Emergency</ThemedText>
                   <Switch
                       value={acceptsEmergency}
                       onValueChange={handleToggleEmergency}
@@ -504,19 +632,10 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
 
           {/* Stats Grid */}
           <View style={styles.statsGrid}>
-            {renderStatCard("users", i18n.t("total_bookings"), stats.totalBookings, theme.primary)}
-            {renderStatCard("check-circle", i18n.t("completed"), stats.completedConsultations, theme.success)}
-            {renderStatCard("star", i18n.t("rating"), stats.averageRating.toFixed(1), theme.warning)}
-            {renderStatCard("dollar-sign", i18n.t("earnings"), `₦${stats.totalEarnings.toLocaleString()}`, theme.info)}
-            <Pressable
-  style={[styles.quickActionButton, { backgroundColor: theme.info }]}
-  onPress={() => navigation.navigate('VideoCallTest')}
->
-  <Feather name="video" size={20} color="#fff" />
-  <ThemedText lightColor="#fff" weight="medium" style={{ marginTop: Spacing.xs }}>
-    Test Video Call
-  </ThemedText>
-</Pressable>
+            {renderStatCard("users", "Total Bookings", stats.totalBookings, theme.primary)}
+            {renderStatCard("check-circle", "Completed", stats.completedConsultations, theme.success)}
+            {renderStatCard("star", "Rating", stats.averageRating.toFixed(1), theme.warning)}
+            {renderStatCard("dollar-sign", "Earnings", `₦${stats.totalEarnings.toLocaleString()}`, theme.info)}
           </View>
 
           {/* Quick Actions */}
@@ -527,7 +646,7 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
             >
               <Feather name="calendar" size={20} color="#fff" />
               <ThemedText lightColor="#fff" weight="medium" style={{ marginTop: Spacing.xs }}>
-                {i18n.t("manage_availability")}
+                Manage Availability
               </ThemedText>
             </Pressable>
             
@@ -537,7 +656,20 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
             >
               <Feather name="star" size={20} color="#fff" />
               <ThemedText lightColor="#fff" weight="medium" style={{ marginTop: Spacing.xs }}>
-                {i18n.t("reviews")} ({reviews.length})
+                Reviews ({reviews.length})
+              </ThemedText>
+            </Pressable>
+
+            <Pressable
+              style={[styles.quickActionButton, { backgroundColor: theme.info }]}
+              onPress={() => {
+                setLocalImageUri(null); 
+                setShowProfileEditor(true);
+              }}
+            >
+              <Feather name="edit" size={20} color="#fff" />
+              <ThemedText lightColor="#fff" weight="medium" style={{ marginTop: Spacing.xs }}>
+                Edit Profile
               </ThemedText>
             </Pressable>
           </View>
@@ -548,7 +680,7 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
               <View style={[styles.sectionHeader, { backgroundColor: theme.warning + "20" }]}>
                 <Feather name="alert-circle" size={20} color={theme.warning} />
                 <ThemedText type="h4" style={{ marginLeft: Spacing.sm, color: theme.warning }}>
-                  {i18n.t("pending_actions")} ({bookings.filter(b => b.status === "pending_confirmation" || b.status === "emergency_pending").length})
+                  Pending Actions ({bookings.filter(b => b.status === "pending_confirmation" || b.status === "emergency_pending").length})
                 </ThemedText>
               </View>
               {bookings.filter(b => b.status === "pending_confirmation" || b.status === "emergency_pending").map(renderBookingCard)}
@@ -558,14 +690,14 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
           {/* Bookings Section */}
           <View style={styles.section}>
             <ThemedText type="h4" style={{ marginBottom: Spacing.md }}>
-              {i18n.t("upcoming_recent_consultations")}
+              Upcoming & Recent Consultations
             </ThemedText>
             
             {bookings.length === 0 ? (
               <View style={[styles.emptyState, { backgroundColor: theme.backgroundSecondary }]}>
                 <Feather name="calendar" size={48} color={theme.textSecondary} />
                 <ThemedText style={{ marginTop: Spacing.md, color: theme.textSecondary }}>
-                  {i18n.t("no_bookings_yet")}
+                  No bookings yet
                 </ThemedText>
               </View>
             ) : (
@@ -577,7 +709,301 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
           </View>
         </View>
 
-        {/* Booking Details Modal */}
+        {/* Profile Editor Modal - UPDATED WITH IMAGE UPLOAD */}
+        <Modal visible={showProfileEditor} animationType="slide" transparent>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : undefined}
+              style={{ flex: 1, justifyContent: "flex-end" }}
+            >
+              <View style={[styles.modalContent, { backgroundColor: theme.cardBackground }]}>
+                <View style={[styles.modalHeader, { backgroundColor: theme.primary }]}>
+                  <ThemedText type="h3" lightColor="#fff">Edit Profile</ThemedText>
+                  <Pressable onPress={() => setShowProfileEditor(false)} disabled={uploadingImage}>
+                    <Feather name="x" size={24} color="#fff" />
+                  </Pressable>
+                </View>
+
+                <ScrollView style={styles.modalBody}>
+                  {/* Image Upload Section */}
+                  <View style={[styles.section, { alignItems: 'center' }]}>
+                    <ThemedText weight="medium" style={{ marginBottom: Spacing.sm }}>Profile Picture</ThemedText>
+                    <Pressable 
+                      style={[styles.profileImageEditor, { borderColor: theme.border, backgroundColor: theme.backgroundSecondary }]}
+                      onPress={handleImagePick}
+                      disabled={uploadingImage}
+                    >
+                      <Image 
+                        source={{ uri: localImageUri || editedProfile.imageUrl || PLACEHOLDER_IMAGE }} 
+                        style={styles.profileImageEdit} 
+                      />
+                      <View style={[styles.cameraIcon, { backgroundColor: theme.primary }]}>
+                        <Feather name="camera" size={20} color="#fff" />
+                      </View>
+                    </Pressable>
+                    {(localImageUri && !uploadingImage) && (
+                      <ThemedText type="caption" style={{ color: theme.success, marginTop: Spacing.xs }}>
+                        New image selected. Save to upload.
+                      </ThemedText>
+                    )}
+                  </View>
+                  
+                  <View style={styles.section}>
+                    <ThemedText weight="medium">Bio</ThemedText>
+                    <TextInput
+                      style={[styles.textArea, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
+                      placeholder="Tell patients about yourself..."
+                      placeholderTextColor={theme.textSecondary}
+                      value={editedProfile.bio}
+                      onChangeText={(text) => setEditedProfile({...editedProfile, bio: text})}
+                      multiline
+                      numberOfLines={4}
+                      editable={!uploadingImage}
+                    />
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText weight="medium">Specialization</ThemedText>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
+                      placeholder="e.g., General Practitioner"
+                      placeholderTextColor={theme.textSecondary}
+                      value={editedProfile.specialization}
+                      onChangeText={(text) => setEditedProfile({...editedProfile, specialization: text})}
+                      editable={!uploadingImage}
+                    />
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText weight="medium">Workplace / Clinic</ThemedText>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
+                      placeholder="e.g., City General Hospital"
+                      placeholderTextColor={theme.textSecondary}
+                      value={editedProfile.workplace}
+                      onChangeText={(text) => setEditedProfile({...editedProfile, workplace: text})}
+                      editable={!uploadingImage}
+                    />
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText weight="medium">Years of Experience</ThemedText>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
+                      placeholder="e.g., 5"
+                      placeholderTextColor={theme.textSecondary}
+                      value={editedProfile.yearsOfExperience.toString()}
+                      onChangeText={(text) => setEditedProfile({...editedProfile, yearsOfExperience: parseInt(text) || 0})}
+                      keyboardType="numeric"
+                      editable={!uploadingImage}
+                    />
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText weight="medium">Consultation Fee (₦)</ThemedText>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
+                      placeholder="e.g., 5000"
+                      placeholderTextColor={theme.textSecondary}
+                      value={editedProfile.consultationFee.toString()}
+                      onChangeText={(text) => setEditedProfile({...editedProfile, consultationFee: parseInt(text) || 0})}
+                      keyboardType="numeric"
+                      editable={!uploadingImage}
+                    />
+                  </View>
+
+                  <View style={styles.section}>
+                    <ThemedText weight="medium">Languages</ThemedText>
+                    <View style={{ flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm }}>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border, flex: 1 }]}
+                        placeholder="Add a language"
+                        placeholderTextColor={theme.textSecondary}
+                        value={languageInput}
+                        onChangeText={setLanguageInput}
+                        editable={!uploadingImage}
+                      />
+                      <PrimaryButton 
+                        title="Add" 
+                        onPress={handleAddLanguage} 
+                        style={{ paddingHorizontal: 20 }} 
+                        disabled={uploadingImage}
+                      />
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs }}>
+                      {editedProfile.languages.map((lang) => (
+                        <View key={lang} style={[styles.languageChip, { backgroundColor: theme.primary + "20", borderColor: theme.primary }]}>
+                          <ThemedText type="caption" style={{ color: theme.primary }}>{lang}</ThemedText>
+                          <Pressable onPress={() => handleRemoveLanguage(lang)} disabled={uploadingImage}>
+                            <Feather name="x" size={14} color={theme.primary} />
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                </ScrollView>
+
+                <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+                  <PrimaryButton
+                    title="Cancel"
+                    onPress={() => setShowProfileEditor(false)}
+                    variant="outlined"
+                    style={{ flex: 1 }}
+                    disabled={uploadingImage}
+                  />
+                  <PrimaryButton
+                    title={uploadingImage ? "Saving..." : "Save Profile"}
+                    onPress={handleSaveProfile}
+                    disabled={uploadingImage}
+                    style={{ flex: 1, marginLeft: Spacing.sm }}
+                    icon={uploadingImage ? <ActivityIndicator color="#fff" /> : undefined}
+                  />
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
+
+        {/* Availability Modal - UPDATED WITH DATE RANGE INPUTS */}
+        <Modal visible={showAvailability} animationType="slide" transparent>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : undefined}
+              style={{ flex: 1, justifyContent: "flex-end" }}
+            >
+              <View style={[styles.modalContent, { backgroundColor: theme.cardBackground }]}>
+                <View style={[styles.modalHeader, { backgroundColor: theme.primary }]}>
+                  <ThemedText type="h3" lightColor="#fff">Manage Availability</ThemedText>
+                  <Pressable onPress={() => setShowAvailability(false)} disabled={savingAvailability}>
+                    <Feather name="x" size={24} color="#fff" />
+                  </Pressable>
+                </View>
+
+                <ScrollView style={styles.modalBody}>
+                  {/* --- Schedule Duration Section --- */}
+                  <View style={[styles.section, { marginBottom: Spacing.md }]}>
+                    <ThemedText weight="medium" style={{ marginBottom: Spacing.xs }}>Schedule Duration</ThemedText>
+                    <View style={styles.dateRangeContainer}>
+                      <View style={{ flex: 1 }}>
+                        <ThemedText type="caption" style={{ marginBottom: 4 }}>Start Date (YYYY-MM-DD)</ThemedText>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
+                          value={startDateInput}
+                          onChangeText={setStartDateInput}
+                          placeholder="e.g., 2024-01-01"
+                          placeholderTextColor={theme.textSecondary}
+                          editable={!savingAvailability}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <ThemedText type="caption" style={{ marginBottom: 4 }}>End Date (YYYY-MM-DD)</ThemedText>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
+                          value={endDateInput}
+                          onChangeText={setEndDateInput}
+                          placeholder="e.g., 2099-12-31"
+                          placeholderTextColor={theme.textSecondary}
+                          editable={!savingAvailability}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                  
+                  <View style={[styles.infoBox, { backgroundColor: theme.info + "15", borderColor: theme.info }]}>
+                    <Feather name="info" size={20} color={theme.info} />
+                    <ThemedText style={{ marginLeft: Spacing.md, flex: 1, color: theme.textSecondary }}>
+                      Define your recurring **weekly schedule** below. This schedule applies between the **Start Date** and **End Date** above.
+                    </ThemedText>
+                  </View>
+
+                  {/* --- Weekly Schedule Definition --- */}
+                  {availability.map((slot) => (
+                    <View
+                      key={slot.id}
+                      style={[
+                        styles.availabilitySlot,
+                        { 
+                          backgroundColor: slot.isEnabled ? theme.backgroundSecondary : theme.border + "20",
+                          opacity: slot.isEnabled ? 1 : 0.6
+                        }
+                      ]}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
+                        <ThemedText weight="bold">{slot.day}</ThemedText>
+                        <Switch
+                          value={slot.isEnabled}
+                          onValueChange={() => handleToggleDay(slot.id)}
+                          trackColor={{ false: theme.border, true: theme.success + "40" }}
+                          thumbColor={slot.isEnabled ? theme.success : theme.textSecondary}
+                          disabled={savingAvailability}
+                        />
+                      </View>
+
+                      {slot.isEnabled && (
+                        <>
+                          <View style={{ marginBottom: Spacing.sm }}>
+                            <ThemedText type="caption" style={{ marginBottom: 4 }}>Start Time</ThemedText>
+                            <TextInput
+                              style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                              value={slot.startTime}
+                              onChangeText={(text) => handleUpdateSlot(slot.id, 'startTime', text)}
+                              placeholder="e.g., 09:00 AM"
+                              placeholderTextColor={theme.textSecondary}
+                              editable={!savingAvailability}
+                            />
+                          </View>
+
+                          <View style={{ marginBottom: Spacing.sm }}>
+                            <ThemedText type="caption" style={{ marginBottom: 4 }}>End Time</ThemedText>
+                            <TextInput
+                              style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                              value={slot.endTime}
+                              onChangeText={(text) => handleUpdateSlot(slot.id, 'endTime', text)}
+                              placeholder="e.g., 05:00 PM"
+                              placeholderTextColor={theme.textSecondary}
+                              editable={!savingAvailability}
+                            />
+                          </View>
+
+                          <View>
+                            <ThemedText type="caption" style={{ marginBottom: 4 }}>Slot Duration (minutes)</ThemedText>
+                            <TextInput
+                              style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                              value={slot.slotDuration.toString()}
+                              onChangeText={(text) => handleUpdateSlot(slot.id, 'slotDuration', parseInt(text) || 30)}
+                              keyboardType="numeric"
+                              placeholder="e.g., 30"
+                              placeholderTextColor={theme.textSecondary}
+                              editable={!savingAvailability}
+                            />
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+
+                <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
+                  <PrimaryButton
+                    title="Cancel"
+                    onPress={() => setShowAvailability(false)}
+                    variant="outlined"
+                    style={{ flex: 1 }}
+                    disabled={savingAvailability}
+                  />
+                  <PrimaryButton
+                    title={savingAvailability ? "Saving..." : "Save Availability"}
+                    onPress={handleSaveAvailability}
+                    disabled={savingAvailability}
+                    style={{ flex: 1, marginLeft: Spacing.sm }}
+                  />
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
+
+        {/* Booking Details Modal (unchanged logic) */}
         <Modal visible={showBookingDetails} animationType="slide" transparent>
           <View style={styles.modalOverlay}>
             <KeyboardAvoidingView
@@ -586,7 +1012,7 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
             >
               <View style={[styles.modalContent, { backgroundColor: theme.cardBackground }]}>
                 <View style={[styles.modalHeader, { backgroundColor: theme.primary }]}>
-                  <ThemedText type="h3" lightColor="#fff">{i18n.t("booking_details")}</ThemedText>
+                  <ThemedText type="h3" lightColor="#fff">Booking Details</ThemedText>
                   <Pressable onPress={() => setShowBookingDetails(false)}>
                     <Feather name="x" size={24} color="#fff" />
                   </Pressable>
@@ -597,22 +1023,22 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
                     <>
                       <View style={[styles.detailSection, { backgroundColor: theme.backgroundSecondary }]}>
                         <ThemedText weight="medium" style={{ marginBottom: Spacing.md }}>
-                          {i18n.t("patient_information")}
+                          Patient Information
                         </ThemedText>
                         <View style={styles.detailRow}>
-                          <ThemedText type="caption">{i18n.t("name")}</ThemedText>
+                          <ThemedText type="caption">Name</ThemedText>
                           <ThemedText weight="medium">{selectedBooking.patientName}</ThemedText>
                         </View>
                         <View style={styles.detailRow}>
-                          <ThemedText type="caption">{i18n.t("date")}</ThemedText>
+                          <ThemedText type="caption">Date</ThemedText>
                           <ThemedText weight="medium">{selectedBooking.date}</ThemedText>
                         </View>
                         <View style={styles.detailRow}>
-                          <ThemedText type="caption">{i18n.t("time")}</ThemedText>
+                          <ThemedText type="caption">Time</ThemedText>
                           <ThemedText weight="medium">{selectedBooking.time}</ThemedText>
                         </View>
                         <View style={styles.detailRow}>
-                          <ThemedText type="caption">{i18n.t("fee")}</ThemedText>
+                          <ThemedText type="caption">Fee</ThemedText>
                           <ThemedText weight="medium">₦{selectedBooking.fee.toLocaleString()}</ThemedText>
                         </View>
                       </View>
@@ -620,7 +1046,7 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
                       {selectedBooking.reason && (
                         <View style={[styles.detailSection, { backgroundColor: theme.backgroundSecondary }]}>
                           <ThemedText weight="medium" style={{ marginBottom: Spacing.sm }}>
-                            {i18n.t("consultation_reason")}
+                            Consultation Reason
                           </ThemedText>
                           <ThemedText style={{ color: theme.textSecondary }}>
                             {selectedBooking.reason}
@@ -633,17 +1059,17 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
                           <View style={[styles.infoBox, { backgroundColor: theme.info + "15", borderColor: theme.info }]}>
                             <Feather name="info" size={20} color={theme.info} />
                             <ThemedText style={{ marginLeft: Spacing.md, flex: 1, color: theme.textSecondary }}>
-                              {i18n.t("payment_held_until_confirm")}
+                              Payment will be held until you confirm and complete the consultation.
                             </ThemedText>
                           </View>
 
                           <View style={styles.section}>
                             <ThemedText weight="medium" style={{ marginBottom: Spacing.sm }}>
-                              {i18n.t("rejection_reason")} ({i18n.t("if_rejecting")})
+                              Rejection Reason (if rejecting)
                             </ThemedText>
                             <TextInput
                               style={[styles.textArea, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
-                              placeholder={i18n.t("enter_reason")}
+                              placeholder="Enter reason for rejection..."
                               placeholderTextColor={theme.textSecondary}
                               value={rejectionReason}
                               onChangeText={setRejectionReason}
@@ -660,13 +1086,13 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
                 {(selectedBooking?.status === "pending_confirmation" || selectedBooking?.status === "emergency_pending") && (
                   <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
                     <PrimaryButton
-                      title={i18n.t("reject")}
+                      title="Reject"
                       onPress={() => handleRejectBooking(selectedBooking!.id)}
                       variant="outlined"
                       style={{ flex: 1 }}
                     />
                     <PrimaryButton
-                      title={i18n.t("confirm_booking")}
+                      title="Confirm Booking"
                       onPress={() => handleConfirmBooking(selectedBooking!.id)}
                       style={{ flex: 1, marginLeft: Spacing.sm }}
                     />
@@ -677,107 +1103,12 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
           </View>
         </Modal>
 
-        {/* Availability Modal (unchanged) */}
-        <Modal visible={showAvailability} animationType="slide" transparent>
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
-              style={{ flex: 1, justifyContent: "flex-end" }}
-            >
-              <View style={[styles.modalContent, { backgroundColor: theme.cardBackground }]}>
-                <View style={[styles.modalHeader, { backgroundColor: theme.primary }]}>
-                  <ThemedText type="h3" lightColor="#fff">{i18n.t("manage_availability")}</ThemedText>
-                  <Pressable onPress={() => setShowAvailability(false)}>
-                    <Feather name="x" size={24} color="#fff" />
-                  </Pressable>
-                </View>
-
-                <ScrollView style={styles.modalBody}>
-                  {availability.length === 0 ? (
-                    <View style={[styles.emptyState, { backgroundColor: theme.backgroundSecondary }]}>
-                      <Feather name="calendar" size={48} color={theme.textSecondary} />
-                      <ThemedText style={{ marginTop: Spacing.md, color: theme.textSecondary }}>
-                        {i18n.t("no_availability_set")}
-                      </ThemedText>
-                    </View>
-                  ) : (
-                    availability.map((slot, index) => (
-                      <View
-                        key={slot.id}
-                        style={[styles.availabilitySlot, { backgroundColor: theme.backgroundSecondary }]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <ThemedText weight="medium">{i18n.t("day")} {index + 1}</ThemedText>
-                          <TextInput
-                            style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-                            value={slot.day}
-                            onChangeText={(text) => handleUpdateAvailabilitySlot(slot.id, 'day', text)}
-                            placeholder="e.g., Monday"
-                            placeholderTextColor={theme.textSecondary}
-                          />
-                          
-                          <ThemedText type="caption" style={{ marginTop: Spacing.sm }}>{i18n.t("start_time")}</ThemedText>
-                          <TextInput
-                            style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-                            value={slot.startTime}
-                            onChangeText={(text) => handleUpdateAvailabilitySlot(slot.id, 'startTime', text)}
-                            placeholder="e.g., 09:00 AM"
-                            placeholderTextColor={theme.textSecondary}
-                          />
-                          
-                          <ThemedText type="caption" style={{ marginTop: Spacing.sm }}>{i18n.t("end_time")}</ThemedText>
-                          <TextInput
-                            style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-                            value={slot.endTime}
-                            onChangeText={(text) => handleUpdateAvailabilitySlot(slot.id, 'endTime', text)}
-                            placeholder="e.g., 05:00 PM"
-                            placeholderTextColor={theme.textSecondary}
-                          />
-                          
-                          <ThemedText type="caption" style={{ marginTop: Spacing.sm }}>{i18n.t("slot_duration")}</ThemedText>
-                          <TextInput
-                            style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
-                            value={slot.slotDuration.toString()}
-                            onChangeText={(text) => handleUpdateAvailabilitySlot(slot.id, 'slotDuration', parseInt(text) || 30)}
-                            keyboardType="numeric"
-                            placeholder="e.g., 30"
-                            placeholderTextColor={theme.textSecondary}
-                          />
-                        </View>
-                        
-                        <Pressable onPress={() => handleRemoveAvailabilitySlot(slot.id)}>
-                          <Feather name="trash-2" size={20} color={theme.error} />
-                        </Pressable>
-                      </View>
-                    ))
-                  )}
-
-                  <PrimaryButton
-                    title={i18n.t("add_day")}
-                    onPress={handleAddAvailabilitySlot}
-                    variant="outlined"
-                    style={{ marginTop: Spacing.md }}
-                  />
-                </ScrollView>
-
-                <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
-                  <PrimaryButton
-                    title={i18n.t("save_availability")}
-                    onPress={handleSaveAvailability}
-                    style={{ flex: 1 }}
-                  />
-                </View>
-              </View>
-            </KeyboardAvoidingView>
-          </View>
-        </Modal>
-
-        {/* Reviews Modal (unchanged) */}
+        {/* Reviews Modal (unchanged logic) */}
         <Modal visible={showReviews} animationType="slide" transparent>
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.cardBackground }]}>
               <View style={[styles.modalHeader, { backgroundColor: theme.primary }]}>
-                <ThemedText type="h3" lightColor="#fff">{i18n.t("patient_reviews")}</ThemedText>
+                <ThemedText type="h3" lightColor="#fff">Patient Reviews</ThemedText>
                 <Pressable onPress={() => setShowReviews(false)}>
                   <Feather name="x" size={24} color="#fff" />
                 </Pressable>
@@ -788,23 +1119,62 @@ const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
                   <View style={[styles.emptyState, { backgroundColor: theme.backgroundSecondary }]}>
                     <Feather name="star" size={48} color={theme.textSecondary} />
                     <ThemedText style={{ marginTop: Spacing.md, color: theme.textSecondary }}>
-                      {i18n.t("no_reviews_yet")}
+                      No reviews yet
                     </ThemedText>
                   </View>
                 ) : (
-                  reviews.map(renderReviewCard)
+                  reviews.map((review) => (
+                    <View
+                      key={review.id}
+                      style={[styles.reviewCard, { backgroundColor: theme.backgroundSecondary }]}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.xs }}>
+                        {[...Array(5)].map((_, i) => (
+                          <Feather
+                            key={i}
+                            name="star"
+                            size={14}
+                            color={i < review.rating ? "#fbbf24" : theme.border}
+                            style={{ marginRight: 2 }}
+                          />
+                        ))}
+                        <ThemedText type="caption" style={{ marginLeft: Spacing.sm, color: theme.textSecondary }}>
+                          {new Date(review.createdAt).toLocaleDateString()}
+                        </ThemedText>
+                      </View>
+                      {review.comment && (
+                        <ThemedText style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
+                          "{review.comment}"
+                        </ThemedText>
+                      )}
+                      <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.xs }}>
+                        - {review.patientName}
+                      </ThemedText>
+                    </View>
+                  ))
                 )}
               </ScrollView>
             </View>
           </View>
         </Modal>
       </ScrollView>
+
+      {/* Consultation Modal */}
+      {showConsultation && currentBooking && profile && (
+          <ConsultationModal 
+            professional={profile}
+            booking={currentBooking}
+            onClose={() => {
+              setShowConsultation(false);
+              setCurrentBooking(null);
+            }}
+          />
+        )}
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  // ... (Your existing styles here)
   container: { flex: 1, paddingTop: 100 },
   content: { padding: Spacing.lg },
   profileCard: {
@@ -823,6 +1193,34 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     justifyContent: "center",
     alignItems: "center",
+  },
+  profileImageEditor: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  profileImageEdit: { 
+    width: '100%', 
+    height: '100%', 
+    borderRadius: 60, 
+    opacity: 0.8 
+  },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    padding: 8,
+    borderRadius: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
   onlineToggle: {
     flexDirection: "row",
@@ -846,11 +1244,13 @@ const styles = StyleSheet.create({
   },
   quickActions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.sm,
     marginBottom: Spacing.lg,
   },
   quickActionButton: {
     flex: 1,
+    minWidth: "48%",
     padding: Spacing.lg,
     borderRadius: BorderRadius.md,
     alignItems: "center",
@@ -919,17 +1319,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     alignItems: "center",
   },
-  reviewCard: {
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    marginBottom: Spacing.sm,
-  },
-  reviewHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
@@ -956,11 +1345,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   availabilitySlot: {
-    flexDirection: "row",
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
     marginBottom: Spacing.md,
-    gap: Spacing.md,
   },
   input: {
     borderWidth: 1,
@@ -995,12 +1382,32 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   emergencyBanner: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  padding: Spacing.sm,
-  borderTopLeftRadius: BorderRadius.md,
-  borderTopRightRadius: BorderRadius.md,
-  margin: -Spacing.lg,
-  marginBottom: Spacing.md,
-}
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.sm,
+    borderTopLeftRadius: BorderRadius.md,
+    borderTopRightRadius: BorderRadius.md,
+    margin: -Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  reviewCard: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.sm
+  },
+  languageChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+  },
+  dateRangeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+    marginTop: Spacing.xs,
+  }
 });

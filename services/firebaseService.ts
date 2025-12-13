@@ -17,8 +17,10 @@ import {
   where,
   onSnapshot,
   orderBy,
-  serverTimestamp,      // ← ADD THIS
+  serverTimestamp,      
   FieldValue,
+  runTransaction,   
+  Transaction as FSTransaction, // 💡 FINAL FIX: Import Transaction under an alias
 } from "firebase/firestore";
 import { soundManager } from '../lib/soundManager';
 import { emailService } from "../lib/resend";
@@ -157,10 +159,11 @@ export interface Wallet {
   userId: string;
   balance: number;
   pendingBalance: number;
-  transactions: Transaction[];
+  transactions: WalletTransaction[];
 }
 
-export interface Transaction {
+// Renamed from Transaction to WalletTransaction to avoid conflict
+export interface WalletTransaction {
   id: string;
   type: "credit" | "debit";
   amount: number;
@@ -272,7 +275,7 @@ export const firebaseService = {
         if (refWalletSnap.exists()) {
           const wallet = refWalletSnap.data();
           const amount = 500;
-          const transactions = wallet.transactions || [];
+          const transactions: WalletTransaction[] = wallet.transactions || [];
           transactions.unshift({
             id: Date.now().toString(),
             type: "credit",
@@ -361,7 +364,7 @@ export const firebaseService = {
   async addMoneyToWallet(userId: string, amount: number, reference: string): Promise<void> {
   const wallet = await this.getWallet(userId);
 
-  const transaction: Transaction = {
+  const transaction: WalletTransaction = {
     id: Date.now().toString(),
     type: "credit",
     amount,
@@ -374,7 +377,6 @@ export const firebaseService = {
 
   await this.updateWallet(wallet);
   
-  // ✅ Play deposit sound
   await soundManager.play('deposit');
 },
 
@@ -385,7 +387,7 @@ export const firebaseService = {
     throw new Error("Insufficient balance");
   }
 
-  const transaction: Transaction = {
+  const transaction: WalletTransaction = {
     id: Date.now().toString(),
     type: "debit",
     amount,
@@ -398,7 +400,6 @@ export const firebaseService = {
 
   await this.updateWallet(wallet);
   
-  // ✅ Play debit sound
   await soundManager.play('debit');
 },
 
@@ -493,178 +494,233 @@ export const firebaseService = {
     discount: number = 0,
     phoneNumber?: string
   ) {
-    // 1. Validate stock availability and calculate total
-    const productRefs = products.map(item =>
-      doc(db, "products", item.productId)
-    );
-    const productSnaps = await Promise.all(productRefs.map(ref => getDoc(ref)));
+    // Refs needed inside and outside the transaction
+    const buyerRef = doc(db, "users", buyerId);
+    const sellerWalletRef = doc(db, "wallets", sellerId);
+    const adminUsersQuery = query(collection(db, "users"), where("role", "==", "admin"));
+    const ordersCol = collection(db, "orders");
+    const productRefs = products.map(item => doc(db, "products", item.productId));
 
-    let subtotal = 0;
-    const stockUpdates: Promise<void>[] = [];
+    let totalAmount = 0;
+    let commission = 0;
+    let orderId: string;
 
-    for (let i = 0; i < products.length; i++) {
-      const item = products[i];
-      const snap = productSnaps[i];
+    // The entire critical path runs inside the transaction
+    try {
+        // 💡 FIX: Use the imported alias FSTransaction
+        orderId = await runTransaction(db, async (transaction: FSTransaction) => {
+            
+            // 1. Read Critical Data (Must be done first inside transaction)
+            const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+            const sellerWalletSnap = await transaction.get(sellerWalletRef);
+            
+            // 2. Validate stock availability and calculate total
+            let subtotal = 0;
+            const stockUpdates: { ref: any, newStock: number }[] = [];
 
-      if (!snap.exists()) {
-        throw new Error(`Product ${item.productName} no longer exists`);
-      }
+            for (let i = 0; i < products.length; i++) {
+                const item = products[i];
+                const snap = productSnaps[i];
 
-      const product = snap.data() as Product;
+                if (!snap.exists()) {
+                    // If the product is deleted by another user outside the transaction, abort.
+                    throw new Error(`Product ${item.productName} no longer exists`); 
+                }
 
-      if (product.stock < item.quantity) {
-        throw new Error(`Insufficient stock for ${product.name}. Only ${product.stock} left.`);
-      }
+                const product = snap.data() as Product;
 
-      const unitPrice = product.discount
-        ? product.price * (1 - product.discount / 100)
-        : product.price;
+                if (product.stock < item.quantity) {
+                    // Insufficient stock, abort transaction
+                    throw new Error(`Insufficient stock for ${product.name}. Only ${product.stock} left.`); 
+                }
 
-      subtotal += unitPrice * item.quantity;
+                const unitPrice = product.discount
+                    ? product.price * (1 - product.discount / 100)
+                    : product.price;
 
-      const newStock = product.stock - item.quantity;
+                subtotal += unitPrice * item.quantity;
+                const newStock = product.stock - item.quantity;
+                
+                stockUpdates.push({ ref: productRefs[i], newStock });
+            }
+            
+            totalAmount = subtotal - discount; // Define for use outside transaction
+            commission = totalAmount * COMMISSION_RATE; // Define for use outside transaction
+            
+            // 3. Create the order (Use a temporary document reference for creation inside transaction)
+            const newOrderRef = doc(ordersCol); // Get a new document reference locally
+            const orderData = {
+                id: newOrderRef.id, // Assign ID immediately
+                buyerId,
+                sellerId,
+                products,
+                totalAmount,
+                commission,
+                status: "running",
+                deliveryAddress,
+                phoneNumber,
+                disputeStatus: "none",
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+            };
+            transaction.set(newOrderRef, orderData);
+            
+            // 4. Update product stocks (Write operation)
+            for (const update of stockUpdates) {
+                if (update.newStock === 0) {
+                    transaction.delete(update.ref);
+                } else if (update.newStock > 0) {
+                    transaction.update(update.ref, { stock: update.newStock });
+                }
+            }
+            
+            // 5. Seller Wallet update (Write operation)
+            const sellerWallet = sellerWalletSnap.exists() 
+                ? sellerWalletSnap.data() as Wallet 
+                : { userId: sellerId, balance: 0, pendingBalance: 0, transactions: [] };
 
-      if (newStock === 0) {
-        stockUpdates.push(deleteDoc(doc(db, "products", item.productId)));
-      } else if (newStock > 0) {
-        stockUpdates.push(
-          updateDoc(doc(db, "products", item.productId), {
-            stock: newStock,
-          })
-        );
-      }
-      
+            const pendingCredit = totalAmount - commission;
+            sellerWallet.pendingBalance += pendingCredit;
+            sellerWallet.transactions.unshift({
+                id: Date.now().toString(),
+                type: "credit",
+                amount: pendingCredit,
+                description: `Pending payment for order #${newOrderRef.id.slice(-6)}`,
+                timestamp: Date.now(),
+            });
+            transaction.set(sellerWalletRef, sellerWallet);
+
+            // 6. Return the new Order ID
+            return newOrderRef.id;
+
+        }); // End of Transaction
+    } catch (error) {
+        console.error("Transaction failed during order creation:", error);
+        throw error;
     }
     
-
-    const totalAmount = subtotal - discount;
-    const commission = totalAmount * COMMISSION_RATE;
-
-    // 2. Create the order
-    const orderRef = await addDoc(collection(db, "orders"), {
-      buyerId,
-      sellerId,
-      products,
-      totalAmount,
-      commission,
-      status: "running",
-      deliveryAddress,
-      phoneNumber,
-      disputeStatus: "none",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
-    await updateDoc(orderRef, { id: orderRef.id });
-
-    // 3. Update product stocks
-    await Promise.all(stockUpdates);
-
-    // 4. Wallet updates
-    const sellerWallet = await this.getWallet(sellerId);
-    sellerWallet.pendingBalance += totalAmount - commission;
-    sellerWallet.transactions.unshift({
-      id: Date.now().toString(),
-      type: "credit",
-      amount: totalAmount - commission,
-      description: `Pending payment for order #${orderRef.id.slice(-6)}`,
-      timestamp: Date.now(),
-    });
-    await this.updateWallet(sellerWallet);
-
-    await soundManager.play('deposit');
-
-    // Admin commission
-    const adminUsers = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
-    if (!adminUsers.empty) {
-      const adminId = adminUsers.docs[0].id;
-      const adminWallet = await this.getWallet(adminId);
-      adminWallet.balance += commission;
-      adminWallet.transactions.unshift({
-        id: Date.now().toString(),
-        type: "credit",
-        amount: commission,
-        description: `Commission from order #${orderRef.id.slice(-6)}`,
-        timestamp: Date.now(),
-      });
-      await this.updateWallet(adminWallet);
-      await soundManager.play('deposit');
-    }
-
-    // 5. NEW: Check if this is buyer's first purchase and release referral bonus
-    const buyerDoc = await getDoc(doc(db, "users", buyerId));
-    if (buyerDoc.exists()) {
-      const buyer = buyerDoc.data() as User;
-      
-      // If this is first purchase and buyer was referred
-      if (!buyer.hasCompletedFirstPurchase && buyer.referredBy) {
-        // Mark buyer as having completed first purchase
-        await updateDoc(doc(db, "users", buyerId), {
-          hasCompletedFirstPurchase: true,
+    // ------------------- Post-Transaction Operations -------------------
+    
+    // 7. Admin commission
+    const adminUsersSnap = await getDocs(adminUsersQuery);
+    if (!adminUsersSnap.empty && commission > 0) {
+        const adminId = adminUsersSnap.docs[0].id;
+        const adminWallet = await this.getWallet(adminId); 
+        
+        adminWallet.balance += commission;
+        adminWallet.transactions.unshift({
+            id: Date.now().toString(),
+            type: "credit",
+            amount: commission,
+            description: `Commission from order #${orderId.slice(-6)}`,
+            timestamp: Date.now(),
         });
-
-        // Release referral bonus to referrer's main balance
-        const referrerWallet = await this.getWallet(buyer.referredBy);
-        const bonusAmount = 500;
-        
-        // Move from pending to main balance
-        referrerWallet.pendingBalance = Math.max(0, referrerWallet.pendingBalance - bonusAmount);
-        referrerWallet.balance += bonusAmount;
-        
-        // Add transaction showing bonus release
-        referrerWallet.transactions.unshift({
-          id: Date.now().toString(),
-          type: "credit",
-          amount: bonusAmount,
-          description: `Referral bonus released! ${buyer.name} completed their first purchase`,
-          timestamp: Date.now(),
-          status: "completed",
-        });
-        
-        await this.updateWallet(referrerWallet);
-
+        await this.updateWallet(adminWallet);
         await soundManager.play('deposit');
-
-
-        // Update referrer's total referral bonus earned
-        const referrerDoc = await getDoc(doc(db, "users", buyer.referredBy));
-        if (referrerDoc.exists()) {
-          const referrer = referrerDoc.data() as User;
-          await updateDoc(doc(db, "users", buyer.referredBy), {
-            referralBonus: (referrer.referralBonus || 0) + bonusAmount,
-          });
-        }
-      }
-
-      // Send order confirmation email
-      await emailService.sendOrderConfirmation(
-        buyer.email,
-        buyer.name,
-        orderRef.id,
-        totalAmount,
-        products
-      );
-
     }
-   
-    // 6. Send seller notification
+
+    // 8. Referral Bonus Release and Email/Notifications
+    const buyerDoc = await getDoc(buyerRef);
+    if (buyerDoc.exists()) {
+        const buyer = buyerDoc.data() as User;
+        
+        // If this is first purchase and buyer was referred
+        if (!buyer.hasCompletedFirstPurchase && buyer.referredBy) {
+            await this.releaseReferralBonus(buyer.uid, buyer.referredBy, buyer.name); 
+        }
+
+        // Send order confirmation email
+        const order = await this.getOrder(orderId);
+        if (order) {
+            await emailService.sendOrderConfirmation(
+                buyer.email,
+                buyer.name,
+                order.id,
+                order.totalAmount,
+                order.products
+            );
+        }
+    }
+    
+    // 9. Send seller notification
     const sellerDoc = await getDoc(doc(db, "users", sellerId));
     if (sellerDoc.exists()) {
       const seller = sellerDoc.data();
       await emailService.sendSellerNotification(
         seller.email,
         seller.name,
-        orderRef.id,
+        orderId,
         totalAmount - commission,
         'new_order'
       );
     }
 
     await soundManager.play('orderPlaced');
-
-    const snap = await getDoc(orderRef);
+    
+    // 10. Return the created order
+    const snap = await getDoc(doc(db, "orders", orderId));
     return snap.data() as Order;
   },
+
+  /**
+   * Helper function to atomically release the referral bonus upon a buyer's first purchase.
+   */
+  async releaseReferralBonus(buyerId: string, referrerId: string, buyerName: string): Promise<void> {
+    const buyerRef = doc(db, "users", buyerId);
+    const referrerWalletRef = doc(db, "wallets", referrerId);
+    const referrerUserRef = doc(db, "users", referrerId);
+    const bonusAmount = 500;
+
+    try {
+        // 💡 FIX: Use the imported alias FSTransaction
+        await runTransaction(db, async (transaction: FSTransaction) => {
+            const [referrerWalletSnap, referrerUserSnap] = await Promise.all([
+                // The 'get' method belongs to the FSTransaction object
+                transaction.get(referrerWalletRef),
+                transaction.get(referrerUserRef),
+            ]);
+
+            const referrerWallet = referrerWalletSnap.data() as Wallet;
+            const referrerUser = referrerUserSnap.data() as User;
+
+            // Move from pending to main balance (ensure pending balance can't go below zero)
+            referrerWallet.pendingBalance = Math.max(0, referrerWallet.pendingBalance - bonusAmount);
+            referrerWallet.balance += bonusAmount;
+                
+            // Add transaction showing bonus release
+            referrerWallet.transactions.unshift({
+                id: Date.now().toString(),
+                type: "credit",
+                amount: bonusAmount,
+                description: `Referral bonus released! ${buyerName} completed their first purchase`,
+                timestamp: Date.now(),
+                status: "completed",
+            });
+            
+            // Update referrer's total referral bonus earned
+            const newReferralBonus = (referrerUser.referralBonus || 0) + bonusAmount;
+
+            // --- Write changes using transaction ---
+            transaction.update(referrerWalletRef, { 
+                balance: referrerWallet.balance, 
+                pendingBalance: referrerWallet.pendingBalance, 
+                transactions: referrerWallet.transactions 
+            });
+            transaction.update(referrerUserRef, {
+                referralBonus: newReferralBonus
+            });
+            transaction.update(buyerRef, { 
+                hasCompletedFirstPurchase: true 
+            }); 
+        });
+
+        await soundManager.play('deposit');
+
+    } catch (error) {
+        console.error("Transaction failed during referral bonus release:", error);
+    }
+  },
+  // ... (rest of the service methods remain the same) ...
 
   async getOrders(userId: string, role: UserRole): Promise<Order[]> {
   const ordersCol = collection(db, "orders");
@@ -995,7 +1051,6 @@ export const firebaseService = {
     updatedAt: Date.now(),
   });
   
-  // ✅ Play dispute sound
   await soundManager.play('dispute');
 
     const adminUsers = await getDocs(
@@ -1410,5 +1465,7 @@ async cleanupOldCarts(daysOld: number = 30): Promise<void> {
   
   console.log(`Cleaned up ${snapshot.docs.length} old carts`);
 },
+
+
 
 };

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { 
   View, 
@@ -7,7 +6,9 @@ import {
   StyleSheet, 
   ScrollView,
   ActivityIndicator,
-  Pressable
+  Pressable,
+  Image, // <-- Import Image
+  ImageSourcePropType, // <-- Import ImageSourcePropType for typing
 } from "react-native";
 import { buyData, getDataPlans, DataPlan } from "@/lib/vtpass";
 import { firebaseService } from "@/services/firebaseService";
@@ -17,6 +18,29 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { Feather } from "@expo/vector-icons";
+
+// 1. IMPORT IMAGE ASSETS
+import airtel from "@/assets/icons/airtel.png";
+import etisalat from "@/assets/icons/etisalat.png";
+import glo from "@/assets/icons/glo.png";
+import mtn from "@/assets/icons/mtn.png";
+
+// Define a type for the network display data
+type NetworkDisplay = {
+    serviceID: string;
+    name: string;
+    icon: ImageSourcePropType;
+    color: string;
+};
+
+// Define the networks using the imported images
+const NETWORKS_DISPLAY: NetworkDisplay[] = [
+    { serviceID: "mtn-data", name: "MTN", icon: mtn, color: "#FFCC00" }, 
+    { serviceID: "glo-data", name: "Glo", icon: glo, color: "#00A95C" }, 
+    { serviceID: "airtel-data", name: "Airtel", icon: airtel, color: "#ED1C24" }, 
+    { serviceID: "etisalat-data", name: "9mobile", icon: etisalat, color: "#00A95F" }, 
+];
+
 
 export default function DataScreen() {
   const { theme } = useTheme();
@@ -51,10 +75,12 @@ export default function DataScreen() {
 
   const fetchPlans = async () => {
     setLoadingPlans(true);
+    setSelectedPlan(null); // Clear selected plan on network change
     try {
       const res = await getDataPlans(serviceID);
       setPlans(res);
-      if (res.length) setSelectedPlan(res[0]);
+      // Select the first plan in the new list, or keep null if list is empty
+      if (res.length) setSelectedPlan(res[0]); 
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to load data plans");
       setPlans([]);
@@ -182,6 +208,41 @@ export default function DataScreen() {
       ]
     );
   };
+  
+  // RENDER FUNCTION FOR NETWORK CARDS
+  const renderNetworkCard = (network: NetworkDisplay) => {
+    const isSelected = serviceID === network.serviceID;
+    
+    return (
+      <Pressable
+        key={network.serviceID}
+        style={[
+          styles.networkCard,
+          {
+            backgroundColor: isSelected ? network.color + "20" : theme.cardBackground,
+            borderColor: isSelected ? network.color : theme.border,
+          }
+        ]}
+        onPress={() => setServiceID(network.serviceID)}
+      >
+        {/* Replace ThemedText with Image */}
+        <Image 
+          source={network.icon} 
+          style={styles.networkIcon} // Use the new style
+          resizeMode="contain" 
+        />
+        <ThemedText weight="medium" style={{ fontSize: 14, marginTop: 4 }}>
+            {network.name}
+        </ThemedText>
+        {isSelected && (
+          <View style={[styles.checkBadge, { backgroundColor: network.color }]}>
+            <Feather name="check" size={10} color="#fff" />
+          </View>
+        )}
+      </Pressable>
+    );
+  };
+
 
   return (
     <ScrollView
@@ -211,81 +272,7 @@ export default function DataScreen() {
           Select Network
         </ThemedText>
         <View style={styles.networkGrid}>
-          <Pressable
-            style={[
-              styles.networkCard,
-              {
-                backgroundColor: serviceID === "mtn-data" ? "#FFCC0020" : theme.cardBackground,
-                borderColor: serviceID === "mtn-data" ? "#FFCC00" : theme.border,
-              }
-            ]}
-            onPress={() => setServiceID("mtn-data")}
-          >
-            <ThemedText style={{ fontSize: 24 }}>📱</ThemedText>
-            <ThemedText weight="medium" style={{ fontSize: 14, marginTop: 4 }}>MTN</ThemedText>
-            {serviceID === "mtn-data" && (
-              <View style={[styles.checkBadge, { backgroundColor: "#FFCC00" }]}>
-                <Feather name="check" size={10} color="#fff" />
-              </View>
-            )}
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.networkCard,
-              {
-                backgroundColor: serviceID === "glo-data" ? "#00A95C20" : theme.cardBackground,
-                borderColor: serviceID === "glo-data" ? "#00A95C" : theme.border,
-              }
-            ]}
-            onPress={() => setServiceID("glo-data")}
-          >
-            <ThemedText style={{ fontSize: 24 }}>📱</ThemedText>
-            <ThemedText weight="medium" style={{ fontSize: 14, marginTop: 4 }}>Glo</ThemedText>
-            {serviceID === "glo-data" && (
-              <View style={[styles.checkBadge, { backgroundColor: "#00A95C" }]}>
-                <Feather name="check" size={10} color="#fff" />
-              </View>
-            )}
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.networkCard,
-              {
-                backgroundColor: serviceID === "airtel-data" ? "#ED1C2420" : theme.cardBackground,
-                borderColor: serviceID === "airtel-data" ? "#ED1C24" : theme.border,
-              }
-            ]}
-            onPress={() => setServiceID("airtel-data")}
-          >
-            <ThemedText style={{ fontSize: 24 }}>📱</ThemedText>
-            <ThemedText weight="medium" style={{ fontSize: 14, marginTop: 4 }}>Airtel</ThemedText>
-            {serviceID === "airtel-data" && (
-              <View style={[styles.checkBadge, { backgroundColor: "#ED1C24" }]}>
-                <Feather name="check" size={10} color="#fff" />
-              </View>
-            )}
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.networkCard,
-              {
-                backgroundColor: serviceID === "etisalat-data" ? "#00A95F20" : theme.cardBackground,
-                borderColor: serviceID === "etisalat-data" ? "#00A95F" : theme.border,
-              }
-            ]}
-            onPress={() => setServiceID("etisalat-data")}
-          >
-            <ThemedText style={{ fontSize: 24 }}>📱</ThemedText>
-            <ThemedText weight="medium" style={{ fontSize: 14, marginTop: 4 }}>9mobile</ThemedText>
-            {serviceID === "etisalat-data" && (
-              <View style={[styles.checkBadge, { backgroundColor: "#00A95F" }]}>
-                <Feather name="check" size={10} color="#fff" />
-              </View>
-            )}
-          </Pressable>
+          {NETWORKS_DISPLAY.map(renderNetworkCard)}
         </View>
       </View>
 
@@ -419,7 +406,8 @@ export default function DataScreen() {
           >
             {filteredPlans.map((plan) => (
               <Pressable
-                key={plan.variation_code}
+                // FIX APPLIED HERE: Combine variation_code with plan name for guaranteed uniqueness
+                key={`${plan.variation_code}-${plan.name.replace(/\s/g, '_')}`} 
                 style={[
                   styles.planOption,
                   {
@@ -573,6 +561,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: Spacing.sm,
     position: "relative",
+  },
+  // NEW STYLE FOR NETWORK IMAGE
+  networkIcon: {
+    width: 32, // Adjust size as needed
+    height: 32, // Adjust size as needed
+    marginBottom: 4,
   },
   checkBadge: {
     position: "absolute",

@@ -12,7 +12,8 @@ import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { firebaseService } from "../services/firebaseService";
 import { Spacing, BorderRadius } from "../constants/theme";
-import { uploadPrescription } from "../services/storageService";
+import { pickDocument, uploadPrescription } from "../services/storageService";
+
 
 export default function CartScreen() {
   const { theme } = useTheme();
@@ -476,55 +477,70 @@ export default function CartScreen() {
       </ScreenScrollView>
 
       {/* Prescription Upload Modal - SIMPLIFIED (Camera & Gallery Only) */}
-      <Modal
-        visible={showPrescriptionModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowPrescriptionModal(false)}
+     // Update the prescription modal JSX (replace the existing modal):
+<Modal
+  visible={showPrescriptionModal}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setShowPrescriptionModal(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+      <View style={styles.modalHeader}>
+        <ThemedText type="h3">Upload Prescription</ThemedText>
+        <Pressable onPress={() => setShowPrescriptionModal(false)}>
+          <Feather name="x" size={24} color={theme.text} />
+        </Pressable>
+      </View>
+
+      <ThemedText type="body" style={{ color: theme.textSecondary, marginBottom: Spacing.lg }}>
+        Choose how you'd like to upload your prescription:
+      </ThemedText>
+
+      <Pressable
+        style={[styles.uploadOption, { backgroundColor: theme.backgroundSecondary }]}
+        onPress={pickImageFromCamera}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-            <View style={styles.modalHeader}>
-              <ThemedText type="h3">Upload Prescription</ThemedText>
-              <Pressable onPress={() => setShowPrescriptionModal(false)}>
-                <Feather name="x" size={24} color={theme.text} />
-              </Pressable>
-            </View>
-
-            <ThemedText type="body" style={{ color: theme.textSecondary, marginBottom: Spacing.lg }}>
-              Choose how you'd like to upload your prescription image:
-            </ThemedText>
-
-            <Pressable
-              style={[styles.uploadOption, { backgroundColor: theme.backgroundSecondary }]}
-              onPress={pickImageFromCamera}
-            >
-              <Feather name="camera" size={24} color={theme.primary} />
-              <View style={{ marginLeft: Spacing.md, flex: 1 }}>
-                <ThemedText type="h4">Take Photo</ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  Use your camera to capture prescription
-                </ThemedText>
-              </View>
-              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
-            </Pressable>
-
-            <Pressable
-              style={[styles.uploadOption, { backgroundColor: theme.backgroundSecondary }]}
-              onPress={pickImageFromGallery}
-            >
-              <Feather name="image" size={24} color={theme.primary} />
-              <View style={{ marginLeft: Spacing.md, flex: 1 }}>
-                <ThemedText type="h4">Choose from Gallery</ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  Select an existing image from your device
-                </ThemedText>
-              </View>
-              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
-            </Pressable>
-          </View>
+        <Feather name="camera" size={24} color={theme.primary} />
+        <View style={{ marginLeft: Spacing.md, flex: 1 }}>
+          <ThemedText type="h4">Take Photo</ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+            Use your camera to capture prescription
+          </ThemedText>
         </View>
-      </Modal>
+        <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+      </Pressable>
+
+      <Pressable
+        style={[styles.uploadOption, { backgroundColor: theme.backgroundSecondary }]}
+        onPress={pickImageFromGallery}
+      >
+        <Feather name="image" size={24} color={theme.primary} />
+        <View style={{ marginLeft: Spacing.md, flex: 1 }}>
+          <ThemedText type="h4">Choose from Gallery</ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+            Select an existing image from your device
+          </ThemedText>
+        </View>
+        <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+      </Pressable>
+
+      <Pressable
+        style={[styles.uploadOption, { backgroundColor: theme.backgroundSecondary }]}
+        onPress={pickDocument}
+      >
+        <Feather name="file-text" size={24} color={theme.primary} />
+        <View style={{ marginLeft: Spacing.md, flex: 1 }}>
+          <ThemedText type="h4">Upload Document</ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+            Select a PDF or image file from your files
+          </ThemedText>
+        </View>
+        <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+      </Pressable>
+    </View>
+  </View>
+</Modal>
     </>
   );
 }

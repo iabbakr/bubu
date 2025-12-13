@@ -1,4 +1,4 @@
-// src/lib/soundManager.ts
+// src/lib/soundManager.ts - FINAL CORRECTED VERSION
 import { Audio } from 'expo-av';
 
 export type SoundKey =
@@ -13,7 +13,9 @@ export type SoundKey =
   | 'ready'
   | 'delivered'
   | 'productAdded'
-  | 'dispute';
+  | 'dispute'
+  | 'click'
+  | 'ringtone'; // ✅ ADDED 'ringtone' back to SoundKey
 
 const Sounds: Record<SoundKey, any> = {
   signup: require('../assets/sounds/welcome_man.wav'),
@@ -26,8 +28,10 @@ const Sounds: Record<SoundKey, any> = {
   enroute: require('../assets/sounds/delivered.wav'),
   ready: require('../assets/sounds/delivered.wav'),
   delivered: require('../assets/sounds/delivered.wav'),
-  dispute: require('../assets/sounds/test.wav'),
   productAdded: require('../assets/sounds/delivered.wav'),
+  dispute: require('../assets/sounds/test.wav'),
+  click: require('../assets/sounds/click.wav'),
+  ringtone: require('../assets/sounds/ringtone.wav'), // ✅ Mapped 'ringtone' to an asset (Adjust path if needed)
 };
 
 class SoundManager {
@@ -36,43 +40,57 @@ class SoundManager {
 
   async init() {
     if (this.initialized) return;
-
     try {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         allowsRecordingIOS: false,
-        staysActiveInBackground: false,
+        staysActiveInBackground: true,
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
+        interruptionModeIOS: 1,        // Do not mix
+        interruptionModeAndroid: 2,    // Duck others
       });
 
+      // Load custom sounds
       for (const [key, asset] of Object.entries(Sounds) as [SoundKey, any][]) {
         const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: false });
         this.sounds[key] = sound;
       }
-
+      
       this.initialized = true;
-      console.log('SoundManager: All 11 sounds loaded successfully');
+      console.log('SoundManager: Loaded custom sounds');
     } catch (error) {
-      console.warn('SoundManager: Failed to load sounds (likely on web or missing files)', error);
+      console.warn('SoundManager init failed:', error);
     }
   }
 
-  async play(key: SoundKey) {
+  async play(key: SoundKey, options?: { loop?: boolean }) {
     const sound = this.sounds[key];
     if (!sound || !this.initialized) {
-      console.log(`SoundManager: Cannot play '${key}' — not loaded`);
+      console.log(`Cannot play '${key}' — not loaded`);
       return;
     }
-
     try {
+      await sound.stopAsync(); // Stop previous instance if running
+      if (options?.loop !== undefined) {
+        await sound.setIsLoopingAsync(!!options.loop);
+      }
       await sound.replayAsync();
     } catch (error) {
-      console.warn(`Failed to play sound: ${key}`, error);
+      console.warn(`Failed to play ${key}:`, error);
     }
+  }
+
+  async stop(key: SoundKey) {
+    const sound = this.sounds[key];
+    if (!sound) return;
+    try {
+      await sound.stopAsync();
+    } catch {}
   }
 
   async stopAll() {
+    // Stop custom sounds
     for (const sound of Object.values(this.sounds)) {
       try {
         await sound?.stopAsync();
@@ -82,6 +100,7 @@ class SoundManager {
 
   async unload() {
     await this.stopAll();
+    
     for (const sound of Object.values(this.sounds)) {
       try {
         await sound?.unloadAsync();

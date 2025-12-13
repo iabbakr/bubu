@@ -8,6 +8,9 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  // 1. ADD Image IMPORT
+  Image, 
+  ImageSourcePropType,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { buyAirtime } from "@/lib/vtpass";
@@ -18,19 +21,28 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Spacing, BorderRadius } from "@/constants/theme";
 
+// 2. IMPORT IMAGE ASSETS
+import airtel from "@/assets/icons/airtel.png";
+import etisalat from "@/assets/icons/etisalat.png";
+import glo from "@/assets/icons/glo.png";
+import mtn from "@/assets/icons/mtn.png";
+// Note: 'logo' is not used in the network list, so we omit it here for cleaner imports.
+
 type Network = {
   id: string;
   name: string;
   serviceID: string;
-  icon: string;
+  // 3. UPDATE ICON TYPE TO ACCEPT IMAGE MODULE
+  icon: ImageSourcePropType; 
   color: string;
 };
 
+// 3. UPDATE NETWORKS ARRAY TO USE IMPORTED IMAGE MODULES
 const NETWORKS: Network[] = [
-  { id: "mtn", name: "MTN", serviceID: "mtn", icon: "📱", color: "#FFCC00" },
-  { id: "glo", name: "Glo", serviceID: "glo", icon: "📱", color: "#00A95C" },
-  { id: "airtel", name: "Airtel", serviceID: "airtel", icon: "📱", color: "#ED1C24" },
-  { id: "9mobile", name: "9mobile", serviceID: "etisalat", icon: "📱", color: "#00A95F" },
+  { id: "mtn", name: "MTN", serviceID: "mtn", icon: mtn, color: "#FFCC00" }, // MTN Image
+  { id: "glo", name: "Glo", serviceID: "glo", icon: glo, color: "#00A95C" }, // Glo Image
+  { id: "airtel", name: "Airtel", serviceID: "airtel", icon: airtel, color: "#ED1C24" }, // Airtel Image
+  { id: "9mobile", name: "9mobile", serviceID: "etisalat", icon: etisalat, color: "#00A95F" }, // 9mobile/Etisalat Image
 ];
 
 const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];
@@ -71,6 +83,7 @@ export default function AirtimeScreen() {
     // Auto-detect network from phone prefix
     if (formatted.length >= 4) {
       const prefix = formatted.slice(0, 4);
+      // NOTE: This logic might need slight adjustments for full accuracy across all prefixes
       if (["0803", "0806", "0810", "0813", "0814", "0816", "0903", "0906"].includes(prefix)) {
         setSelectedNetwork(NETWORKS[0]); // MTN
       } else if (["0805", "0807", "0811", "0815", "0905", "0907"].includes(prefix)) {
@@ -200,10 +213,13 @@ export default function AirtimeScreen() {
         ]}
         onPress={() => setSelectedNetwork(network)}
       >
-        <ThemedText style={{ fontSize: 32, marginBottom: 4 }}>
-          {network.icon}
-        </ThemedText>
-        <ThemedText weight="medium" style={{ fontSize: 12 }}>
+        {/* 4. USE IMAGE COMPONENT INSTEAD OF THEMEDTEXT */}
+        <Image 
+          source={network.icon} 
+          style={styles.networkIcon} 
+          resizeMode="contain" 
+        />
+        <ThemedText weight="medium" style={{ fontSize: 12, marginTop: Spacing.xs }}>
           {network.name}
         </ThemedText>
         {isSelected && (
@@ -371,6 +387,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+  },
+  // NEW STYLE FOR THE IMAGE ICON
+  networkIcon: {
+    width: 32, 
+    height: 32, 
+    marginBottom: 4,
   },
   checkmark: {
     position: "absolute",

@@ -1,4 +1,4 @@
-import React from "react"; // Removed useMemo since it's no longer necessary for the screenOptions structure
+import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -8,8 +8,7 @@ import PharmacyStackNavigator from "@/navigation/PharmacyStackNavigator";
 import ServicesStackNavigator from "@/navigation/ServicesStackNavigator";
 import OrdersStackNavigator from "@/navigation/OrdersStackNavigator";
 import i18n from "../lib/i18n"; 
-import { useLanguage } from '../context/LanguageContext'; // Hook is imported
-
+import { useLanguage } from '../context/LanguageContext'; 
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -26,16 +25,12 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 export default function MainTabNavigator() {
   const { theme, isDark } = useTheme();
   
-  // 1. Call the hook to subscribe to the language context state.
-  //    (This is already correct and ensures the component re-renders for language updates)
   const { locale } = useLanguage(); 
 
-  // 2. Define the main screen options directly as a function within the JSX.
-  //    This resolves the TypeScript overload issue with complex properties like `tabBarBackground`.
   return (
     <Tab.Navigator
       initialRouteName="SupermarketTab"
-      screenOptions={() => ({ // <--- FIX IS HERE: screenOptions defined as a function
+      screenOptions={() => ({
         tabBarActiveTintColor: theme.tabIconSelected,
         tabBarInactiveTintColor: theme.tabIconDefault,
         tabBarStyle: {
@@ -67,7 +62,6 @@ export default function MainTabNavigator() {
         name="SupermarketTab"
         component={SupermarketStackNavigator}
         options={{
-          // Translation remains dynamic due to the component re-render
           title: i18n.t("supermarket"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="shopping-cart" size={20} color={color} />

@@ -1,412 +1,420 @@
-// ConsultationModal Component - Enhanced with Call Button & Dual Timer
+// components/ConsultationModal.tsx - FULLY UPDATED: Professional starts calls, patients join
+
 import React, { useState, useEffect } from 'react';
-import { View, Modal, Alert, ActivityIndicator, Pressable, StyleSheet, Image, TextInput } from 'react-native';
+import { View, Modal, Alert, ActivityIndicator, Pressable, StyleSheet, Image, TextInput, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { ThemedText } from './ThemedText';
 import { PrimaryButton } from './PrimaryButton';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../hooks/useAuth';
+import { useNavigation } from '@react-navigation/native';
 import { Spacing, BorderRadius } from '../constants/theme';
 import { professionalService, Booking, Professional } from '../services/professionalService';
-import { firebaseService } from '../services/firebaseService';
-import {
-  StreamVideo,
-  StreamCall,
-  StreamVideoClient,
-  CallControls,
-  CallContent,
-} from '@stream-io/video-react-native-sdk';
-import { initStreamClient, createVideoCall, checkBackendHealth } from '../services/streamService';
+import { checkBackendHealth } from '../services/streamService';
+import { soundManager } from '../lib/soundManager';
 import i18n from '../lib/i18n';
-import { notificationService } from '../services/notificationService';
-
-
 
 const PLACEHOLDER_IMAGE = "https://via.placeholder.com/400x400/6366f1/ffffff?text=Doctor";
 
-export const ConsultationModal = ({ professional, booking, onClose }: {
+export const ConsultationModal = ({
+  professional,
+  booking,
+  onClose,
+}: {
   professional: Professional;
   booking: Booking;
   onClose: () => void;
 }) => {
   const { user } = useAuth();
   const { theme } = useTheme();
-  const [client, setClient] = useState<StreamVideoClient | null>(null);
-  const [call, setCall] = useState<any>(null);
+  const navigation = useNavigation<any>();
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [emergencyTimer, setEmergencyTimer] = useState<number>(0);
+  const [sessionTimeRemaining, setSessionTimeRemaining] = useState<number>(0);
   const [canStart, setCanStart] = useState(false);
-  const [queuePosition, setQueuePosition] = useState<number>(0);
   const [bookingStatus, setBookingStatus] = useState(booking.status);
-
+  const [showRating, setShowRating] = useState(false);
+  const [consultationExpiresAt, setConsultationExpiresAt] = useState(booking.sessionExpiresAt || null);
+  
   const imageUrl = professional.imageUrl || PLACEHOLDER_IMAGE;
+  const isProfessional = user?.uid === booking.professionalId;
 
-  // Listen to booking changes
+  // Listen to real-time booking updates
   useEffect(() => {
     const unsubscribe = professionalService.listenToBooking(booking.id, (updated) => {
       setBookingStatus(updated.status);
-      setQueuePosition(updated.queuePosition || 0);
       setCanStart(updated.canStartCall || false);
+      setConsultationExpiresAt(updated.sessionExpiresAt || null);
+      
+      if (updated.status === 'completed' && !updated.rated) {
+        setShowRating(true);
+      }
     });
     return () => unsubscribe();
   }, [booking.id]);
 
-  // Timer logic for scheduled consultations
+  // Session expiry countdown (30 minutes)
   useEffect(() => {
-    if (booking.isEmergency) {
-      // Emergency timer uses emergencyDeadline
-      if (booking.emergencyDeadline) {
-        const updateTimer = () => {
-          const remaining = booking.emergencyDeadline! - Date.now();
-          setEmergencyTimer(Math.max(0, remaining));
-        };
-        updateTimer();
-        const interval = setInterval(updateTimer, 1000);
-        return () => clearInterval(interval);
-      }
-    } else {
-      // Scheduled consultation timer
-      if (!booking.scheduledTimestamp) {
-        setCanStart(true);
-        return;
-      }
-
-      const updateTimer = () => {
-        const remaining = booking.scheduledTimestamp! - Date.now();
-        setTimeRemaining(Math.max(0, remaining));
-      };
-
-      updateTimer();
-      const interval = setInterval(updateTimer, 1000);
+    if (consultationExpiresAt && bookingStatus === 'in_progress') {
+      const interval = setInterval(() => {
+        const remaining = Math.max(0, consultationExpiresAt - Date.now());
+        setSessionTimeRemaining(remaining);
+        
+        if (remaining === 0) {
+          clearInterval(interval);
+          Alert.alert(
+            "Session Expired",
+            "Your 30-minute consultation window has ended. Please complete the booking.",
+            [{ text: "OK", onPress: onClose }]
+          );
+        }
+      }, 1000);
       return () => clearInterval(interval);
     }
-  }, [booking.scheduledTimestamp, booking.emergencyDeadline, booking.isEmergency]);
+  }, [consultationExpiresAt, bookingStatus]);
 
-  const formatTimeRemaining = () => {
-    const time = booking.isEmergency ? emergencyTimer : timeRemaining;
-    const days = Math.floor(time / (24 * 60 * 60 * 1000));
-    const hours = Math.floor((time % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-    const minutes = Math.floor((time % (60 * 60 * 1000)) / (60 * 1000));
-    const seconds = Math.floor((time % (60 * 1000)) / 1000);
+  // Emergency countdown
+  useEffect(() => {
+    if (booking.isEmergency && booking.emergencyDeadline && bookingStatus === 'emergency_pending') {
+      const interval = setInterval(() => {
+        const remaining = Math.max(0, booking.emergencyDeadline! - Date.now());
+        setEmergencyTimer(remaining);
+        if (remaining === 0) {
+          clearInterval(interval);
+          Alert.alert("Request Expired", "The professional did not respond in time.");
+          onClose();
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [booking.emergencyDeadline, bookingStatus]);
 
-    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m ${seconds}s`;
+  // Scheduled consultation countdown
+  useEffect(() => {
+    if (!booking.isEmergency && booking.scheduledTimestamp && bookingStatus === 'confirmed') {
+      const interval = setInterval(() => {
+        const remaining = Math.max(0, booking.scheduledTimestamp! - Date.now());
+        setTimeRemaining(remaining);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [booking.scheduledTimestamp, bookingStatus]);
+
+  const formatTimeRemaining = (time: number) => {
+    const minutes = Math.floor(time / 60000);
+    const seconds = Math.floor((time % 60000) / 1000);
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  // ✅ PROFESSIONAL ONLY: Start call and send notification to patient
   const handleStartCall = async () => {
-    if (!user || !canStart) return;
-    
-    try {
-      setLoading(true);
-      setError(null);
+    if (!user || !isProfessional) {
+      Alert.alert("Error", "Only the professional can start the consultation");
+      return;
+    }
 
+    setLoading(true);
+    setError(null);
+
+    try {
       const isHealthy = await checkBackendHealth();
       if (!isHealthy) throw new Error(i18n.t("video_service_unavailable"));
 
-      const streamClient = await initStreamClient(user.uid, user.name || 'User', user.imageUrl);
-      setClient(streamClient);
+      // ✅ Initiate call - this function is now responsible for CREATING the Stream call first, 
+      // then updating Firestore and sending the notification.
+      const callId = await professionalService.initiateCall(booking.id, user.uid);
 
-      const { callId } = await createVideoCall(
-        booking.id,
-        professional.uid,
-        user.uid,
-        professional.name,
-        user.name || 'Patient'
-      );
+      // Professional immediately joins the call
+      navigation.navigate('VideoCall', {
+        streamUserId: user.uid,
+        streamUserName: user.name,
+        streamUserImage: user.imageUrl,
+        callId: callId,
+        bookingId: booking.id,
+      });
+      
+      onClose();
 
-    console.log('✅ Call created with ID:', callId);
+    } catch (err: any) {
+      console.error('❌ Call failed:', err);
+      setError(err.message || i18n.t("failed_to_connect"));
+      setLoading(false);
+    }
+  };
 
-    // ✅ NEW: Send incoming call notification to the other user
-    const otherUserId = user.uid === booking.professionalId 
-      ? booking.patientId 
-      : booking.professionalId;
+  // ✅ PATIENT: Join ongoing call
+  const handleJoinCall = async () => {
+    if (!user) return;
+
+    setLoading(true);
+    setError(null);
     
-    const otherUserName = user.uid === booking.professionalId 
-      ? booking.patientName 
-      : booking.professionalName;
+    try {
+      const isHealthy = await checkBackendHealth();
+      if (!isHealthy) throw new Error(i18n.t("video_service_unavailable"));
 
-    await notificationService.sendIncomingCallNotification({
-      callId,
-      bookingId: booking.id,
-      callerName: user.name || 'User',
-      callerImage: user.imageUrl,
-      callerId: user.uid,
-      receiverId: otherUserId,
-      createdAt: Date.now(),
-      isEmergency: booking.isEmergency,
-    });
+      // Patient joins the call created by the professional
+      const callId = await professionalService.joinCall(booking.id, user.uid);
 
-    console.log('✅ Incoming call notification sent to:', otherUserName);
+      navigation.navigate('VideoCall', {
+        streamUserId: user.uid,
+        streamUserName: user.name,
+        streamUserImage: user.imageUrl,
+        callId: callId,
+        bookingId: booking.id,
+      });
+      
+      onClose();
 
-    // Join the call
-    const newCall = streamClient.call('default', callId);
-    await newCall.join({ create: true });
-    await newCall.get();
-    setCall(newCall);
-    setLoading(false);
-    
-    await professionalService.updateBookingStatus(booking.id, "in_progress");
-  } catch (error: any) {
-    console.error('Call error:', error);
-    setError(error.message || i18n.t("failed_to_connect"));
-    setLoading(false);
+    } catch (err: any) {
+      console.error('❌ Join failed:', err);
+      setError(err.message || i18n.t("failed_to_connect"));
+      setLoading(false);
+    }
+  };
+
+  const isPending = ['pending_confirmation', 'emergency_pending'].includes(bookingStatus);
+  const isConfirmed = ['confirmed', 'emergency_confirmed'].includes(bookingStatus);
+  const isInProgress = bookingStatus === 'in_progress';
+
+  // RATING MODAL
+  if (showRating) {
+    return (
+      <RatingModal
+        professional={professional}
+        booking={booking}
+        onClose={() => {
+          setShowRating(false);
+          onClose();
+        }}
+      />
+    );
   }
-};
 
-  const isPending = bookingStatus === "pending_confirmation" || bookingStatus === "emergency_pending";
-  const isConfirmedScheduled = bookingStatus === "confirmed" && !booking.isEmergency;
-  const isConfirmedEmergency = bookingStatus === "emergency_confirmed";
+  // PENDING STATE (Emergency countdown)
+  if (isPending && booking.isEmergency) {
+    return (
+      <Modal visible animationType="fade">
+        <View style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
+          <Image source={{ uri: imageUrl }} style={styles.profileImageLarge} />
+          <Feather name="zap" size={64} color={theme.error} style={{ marginTop: Spacing.xl }} />
+          <ThemedText type="h2" style={{ color: theme.error, textAlign: 'center', marginTop: Spacing.lg }}>
+            🚨 Emergency Request Sent
+          </ThemedText>
+          <ThemedText style={{ marginTop: Spacing.md, color: theme.textSecondary, textAlign: 'center' }}>
+            Waiting for {professional.name} to respond...
+          </ThemedText>
+          <ThemedText type="h1" style={{ marginTop: Spacing.xl, color: theme.error }}>
+            {formatTimeRemaining(emergencyTimer)}
+          </ThemedText>
+          <ThemedText type="caption" style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
+            Professional must respond within this time
+          </ThemedText>
+          <PrimaryButton title="Cancel Request" onPress={onClose} variant="outlined" style={{ marginTop: Spacing.xl }} />
+        </View>
+      </Modal>
+    );
+  }
 
-  // Pending confirmation state (for scheduled or emergency)
+  // PENDING STATE (Regular)
   if (isPending) {
     return (
       <Modal visible animationType="fade">
         <View style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
           <Image source={{ uri: imageUrl }} style={styles.profileImageLarge} />
-          
-          {booking.isEmergency ? (
-            <>
-              <Feather name="zap" size={64} color={theme.error} style={{ marginTop: Spacing.lg }} />
-              <ThemedText type="h2" style={{ marginTop: Spacing.md, textAlign: 'center', color: theme.error }}>
-                🚨 {i18n.t("emergency_request_sent")}
-              </ThemedText>
-              <ThemedText style={{ marginTop: Spacing.sm, color: theme.textSecondary, textAlign: 'center' }}>
-                {professional.name} {i18n.t("has_been_notified")}
-              </ThemedText>
-              
-              <View style={[styles.timerContainer, { backgroundColor: theme.error + "20", borderColor: theme.error }]}>
-                <Feather name="clock" size={32} color={theme.error} />
-                <ThemedText type="h1" style={{ color: theme.error, marginTop: Spacing.md }}>
-                  {formatTimeRemaining()}
-                </ThemedText>
-                <ThemedText style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
-                  {i18n.t("waiting_for_professional_response")}
-                </ThemedText>
-              </View>
-              
-              <View style={[styles.infoBox, { backgroundColor: theme.info + "15", borderColor: theme.info }]}>
-                <Feather name="info" size={20} color={theme.info} />
-                <ThemedText style={{ marginLeft: Spacing.md, flex: 1, color: theme.textSecondary }}>
-                  💡 Average response time: 10 minutes. You'll be notified immediately when {professional.name} accepts.
-                </ThemedText>
-              </View>
-            </>
-          ) : (
-            // Regular pending confirmation
-            <>
-              <ThemedText type="h2" style={{ marginTop: Spacing.lg, textAlign: 'center' }}>
-                {i18n.t("waiting_for_confirmation")}
-              </ThemedText>
-              <ThemedText style={{ marginTop: Spacing.sm, color: theme.textSecondary, textAlign: 'center' }}>
-                {professional.name} {i18n.t("will_review_booking")}
-              </ThemedText>
-              <View style={[styles.infoBox, { backgroundColor: theme.warning + "15", borderColor: theme.warning, marginTop: Spacing.xl }]}>
-                <Feather name="clock" size={24} color={theme.warning} />
-                <ThemedText style={{ marginLeft: Spacing.md, flex: 1, color: theme.textSecondary }}>
-                  {i18n.t("payment_on_hold")}
-                </ThemedText>
-              </View>
-            </>
-          )}
-          
-          <PrimaryButton
-            title={i18n.t("close")}
-            onPress={onClose}
-            variant="outlined"
-            style={{ marginTop: Spacing.xl, minWidth: 200 }}
-          />
+          <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: Spacing.xl }} />
+          <ThemedText type="h2" style={{ marginTop: Spacing.lg, textAlign: 'center' }}>
+            Awaiting Confirmation
+          </ThemedText>
+          <ThemedText style={{ marginTop: Spacing.md, color: theme.textSecondary, textAlign: 'center' }}>
+            {professional.name} will review your request soon
+          </ThemedText>
+          <PrimaryButton title="Close" onPress={onClose} variant="outlined" style={{ marginTop: Spacing.xl }} />
         </View>
       </Modal>
     );
   }
 
-  // Waiting with timer (Confirmed Scheduled Booking)
-  if (isConfirmedScheduled && !canStart) {
+  // ✅ CONFIRMED STATE - Professional can start, Patient waits
+  if (isConfirmed) {
     return (
       <Modal visible animationType="fade">
-        <View style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
-          <Image source={{ uri: imageUrl }} style={styles.profileImageLarge} />
-          <ThemedText type="h2" style={{ marginTop: Spacing.lg, textAlign: 'center' }}>
-            {i18n.t("consultation_scheduled")}
+        <View style={{ flex: 1, backgroundColor: theme.success, justifyContent: 'center', alignItems: 'center' }}>
+          <Feather name="video" size={80} color="#fff" />
+          <ThemedText type="h1" lightColor="#fff" style={{ marginTop: Spacing.xl }}>
+            {isProfessional ? 'Ready to Start' : 'Confirmed'}
           </ThemedText>
-          <ThemedText style={{ marginTop: Spacing.sm, color: theme.textSecondary, textAlign: 'center' }}>
-            {i18n.t("with")} {professional.name}
+          <ThemedText lightColor="#fff" style={{ marginTop: Spacing.lg, fontSize: 20, textAlign: 'center', paddingHorizontal: 40 }}>
+            {isProfessional 
+              ? `Your consultation with ${booking.patientName} is confirmed. Start when ready.`
+              : `${professional.name} has confirmed. Waiting for them to start the call.`
+            }
           </ThemedText>
 
-          <View style={[styles.timerContainer, { backgroundColor: theme.primary + "20", borderColor: theme.primary }]}>
-            <Feather name="clock" size={32} color={theme.primary} />
-            <ThemedText type="h1" style={{ color: theme.primary, marginTop: Spacing.md }}>
-              {formatTimeRemaining()}
-            </ThemedText>
-            <ThemedText style={{ marginTop: Spacing.sm, color: theme.textSecondary }}>
-              {i18n.t("until_consultation")}
-            </ThemedText>
-          </View>
-
-          {queuePosition > 0 && (
-            <View style={[styles.queueCard, { backgroundColor: theme.info + "15", borderColor: theme.info }]}>
-              <Feather name="users" size={24} color={theme.info} />
-              <View style={{ marginLeft: Spacing.md, flex: 1 }}>
-                <ThemedText weight="medium" style={{ color: theme.info }}>
-                  {i18n.t("your_position")}
-                </ThemedText>
-                <ThemedText type="h2" style={{ color: theme.info }}>#{queuePosition}</ThemedText>
-              </View>
+          {/* Show countdown if scheduled in future */}
+          {!booking.isEmergency && timeRemaining > 0 && (
+            <View style={[styles.timerContainer, { backgroundColor: '#fff', marginTop: 40 }]}>
+              <Feather name="clock" size={40} color={theme.success} />
+              <ThemedText type="h1" style={{ color: theme.success, marginTop: Spacing.md }}>
+                {formatTimeRemaining(timeRemaining)}
+              </ThemedText>
+              <ThemedText style={{ color: theme.textSecondary }}>until scheduled time</ThemedText>
             </View>
           )}
 
-          <View style={[styles.infoBox, { backgroundColor: theme.info + "15", borderColor: theme.info }]}>
-            <Feather name="info" size={20} color={theme.info} />
-            <ThemedText style={{ marginLeft: Spacing.md, flex: 1, color: theme.textSecondary }}>
-              💡 {i18n.t("you_will_be_notified")} The "Start Call" button will appear 15 minutes before your scheduled time.
+          {isProfessional && (
+            <Pressable
+              style={[styles.bigCallButton, { backgroundColor: '#fff', marginTop: 60 }]}
+              onPress={handleStartCall}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="large" color={theme.success} />
+              ) : (
+                <>
+                  <Feather name="video" size={60} color={theme.success} />
+                  <ThemedText type="h2" style={{ color: theme.success, marginTop: 16 }}>
+                    Start Consultation
+                  </ThemedText>
+                </>
+              )}
+            </Pressable>
+          )}
+
+          {!isProfessional && (
+            <ThemedText type="caption" lightColor="#fff" style={{ marginTop: Spacing.xl, opacity: 0.8, textAlign: 'center', paddingHorizontal: 40 }}>
+              You'll receive a notification when {professional.name} starts the call
             </ThemedText>
-          </View>
-          
+          )}
+
+          {error && (
+            <ThemedText lightColor="#fff" style={{ marginTop: Spacing.lg, textAlign: 'center', paddingHorizontal: 40 }}>
+              ⚠️ {error}
+            </ThemedText>
+          )}
+
           <PrimaryButton
-            title={i18n.t("close")}
+            title="Close"
             onPress={onClose}
             variant="outlined"
-            style={{ marginTop: Spacing.xl, minWidth: 200 }}
+            lightColor="#fff"
+            style={{ marginTop: 50, borderColor: '#fff' }}
+            disabled={loading}
           />
         </View>
       </Modal>
     );
   }
 
-  // Loading state
-  if (loading) {
-    return (
-      <Modal visible animationType="fade">
-        <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={theme.primary} />
-          <ThemedText type="h2" lightColor="#fff" style={{ marginTop: Spacing.md }}>
-            {i18n.t("connecting")}...
-          </ThemedText>
-        </View>
-      </Modal>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <Modal visible animationType="fade">
-        <View style={{ flex: 1, backgroundColor: theme.error, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
-          <Feather name="alert-circle" size={64} color="#fff" />
-          <ThemedText type="h2" lightColor="#fff" style={{ marginTop: Spacing.lg, textAlign: 'center' }}>
-            {i18n.t("connection_error")}
-          </ThemedText>
-          <ThemedText lightColor="#fff" style={{ marginTop: Spacing.md, textAlign: 'center', opacity: 0.9 }}>
-            {error}
-          </ThemedText>
-          <View style={{ marginTop: Spacing.xl, flexDirection: 'row', gap: Spacing.md }}>
-            <PrimaryButton
-              title={i18n.t("try_again")}
-              onPress={handleStartCall}
-              style={{ minWidth: 150, backgroundColor: '#fff' }}
-              textStyle={{ color: theme.error }}
-            />
-            <PrimaryButton
-              title={i18n.t("close")}
-              onPress={onClose}
-              variant="outlined"
-              style={{ minWidth: 150, borderColor: '#fff' }}
-              lightColor="#fff"
-            />
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  // Ready to start (Scheduled or Emergency Confirmed) - ENHANCED WITH BIG CALL BUTTON
-  if ((bookingStatus === "ready" || isConfirmedEmergency) && canStart && !call) {
-    const isEmergency = booking.isEmergency;
-    const bgColor = isEmergency ? theme.error : theme.success;
+  // ✅ IN PROGRESS - Both can join
+  if (isInProgress) {
+    const sessionMinutes = Math.floor(sessionTimeRemaining / 60000);
+    const sessionSeconds = Math.floor((sessionTimeRemaining % 60000) / 1000);
     
     return (
       <Modal visible animationType="fade">
-        <View style={{ flex: 1, backgroundColor: bgColor, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
-          <Feather name="video" size={64} color="#fff" />
-          <ThemedText type="h2" lightColor="#fff" darkColor="#fff" style={{ marginTop: Spacing.lg, textAlign: 'center' }}>
-            {isEmergency ? "🚨 " : ""}
-            {queuePosition === 1 ? i18n.t("next_in_queue") : i18n.t("ready_to_start")}
-          </ThemedText>
-          <ThemedText lightColor="#fff" darkColor="#fff" style={{ marginTop: Spacing.md, textAlign: 'center', fontSize: 18 }}>
-            {i18n.t("consultation_with")} **{professional.name}**
-          </ThemedText>
-
-          {queuePosition > 1 && (
-            <View style={[styles.queueCard, { backgroundColor: '#fff', borderColor: '#fff', marginTop: Spacing.xl }]}>
-              <ThemedText weight="medium" style={{ color: bgColor }}>
-                {i18n.t("your_position")}: #{queuePosition}
+        <View style={{ flex: 1, backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center' }}>
+          <Feather name="video" size={80} color="#fff" />
+          
+          {/* Session Timer */}
+          {consultationExpiresAt && (
+            <View style={[styles.sessionTimer, { backgroundColor: sessionMinutes < 5 ? theme.error : '#fff' }]}>
+              <Feather name="clock" size={20} color={sessionMinutes < 5 ? '#fff' : theme.primary} />
+              <ThemedText 
+                type="h3" 
+                lightColor={sessionMinutes < 5 ? '#fff' : theme.primary}
+                style={{ marginLeft: 8 }}
+              >
+                {sessionMinutes}:{sessionSeconds.toString().padStart(2, '0')}
               </ThemedText>
             </View>
           )}
 
-          {/* BIG CALL BUTTON */}
-          <Pressable
-            style={[styles.bigCallButton, { backgroundColor: '#fff', marginTop: Spacing["3xl"] }]}
-            onPress={handleStartCall}
-          >
-            <View style={[styles.callIconCircle, { backgroundColor: bgColor }]}>
-              <Feather name="video" size={48} color="#fff" />
-            </View>
-            <ThemedText type="h2" style={{ color: bgColor, marginTop: Spacing.lg }}>
-              {i18n.t("start_consultation")}
-            </ThemedText>
-            <ThemedText style={{ color: theme.textSecondary, marginTop: Spacing.sm }}>
-              Tap to begin video call
-            </ThemedText>
-          </Pressable>
+          <ThemedText type="h1" lightColor="#fff" style={{ marginTop: Spacing.xl }}>
+            {isProfessional ? 'Consultation Active' : 'Consultation Ready'}
+          </ThemedText>
+          
+          <ThemedText lightColor="#fff" style={{ marginTop: Spacing.lg, fontSize: 18, textAlign: 'center', paddingHorizontal: 40 }}>
+            {isProfessional 
+              ? `Patient: ${booking.patientName}`
+              : `Professional: ${professional.name}`
+            }
+          </ThemedText>
 
-          <View style={{ marginTop: Spacing["3xl"], width: '100%' }}>
-            <PrimaryButton
-              title={i18n.t("cancel")}
-              onPress={onClose}
-              variant="outlined"
-              style={{ borderColor: '#fff' }}
-              lightColor="#fff"
-            />
-          </View>
+          {isProfessional ? (
+            <>
+              <ThemedText type="caption" lightColor="#fff" style={{ marginTop: Spacing.md, opacity: 0.8, textAlign: 'center', paddingHorizontal: 40 }}>
+                You can start a new call within the 30-minute window if there's a connection issue
+              </ThemedText>
+              
+              <Pressable
+                style={[styles.bigCallButton, { backgroundColor: '#fff', marginTop: 60 }]}
+                onPress={handleStartCall}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="large" color={theme.primary} />
+                ) : (
+                  <>
+                    <Feather name="phone" size={60} color={theme.primary} />
+                    <ThemedText type="h2" style={{ color: theme.primary, marginTop: 16 }}>
+                      Start Call
+                    </ThemedText>
+                  </>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <ThemedText type="caption" lightColor="#fff" style={{ marginTop: Spacing.md, opacity: 0.8, textAlign: 'center', paddingHorizontal: 40 }}>
+                Tap below to join the consultation call
+              </ThemedText>
+              
+              <Pressable
+                style={[styles.bigCallButton, { backgroundColor: '#fff', marginTop: 60 }]}
+                onPress={handleJoinCall}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="large" color={theme.primary} />
+                ) : (
+                  <>
+                    <Feather name="phone" size={60} color={theme.primary} />
+                    <ThemedText type="h2" style={{ color: theme.primary, marginTop: 16 }}>
+                      Join Call
+                    </ThemedText>
+                  </>
+                )}
+              </Pressable>
+            </>
+          )}
+
+          {error && (
+            <ThemedText lightColor="#fff" style={{ marginTop: Spacing.lg, textAlign: 'center', paddingHorizontal: 40 }}>
+              ⚠️ {error}
+            </ThemedText>
+          )}
+
+          <PrimaryButton
+            title="Close"
+            onPress={onClose}
+            variant="outlined"
+            lightColor="#fff"
+            style={{ marginTop: 50, borderColor: '#fff' }}
+            disabled={loading}
+          />
         </View>
       </Modal>
     );
   }
 
-  // Call in progress
-  if (!client || !call) return null;
-  
-  return (
-    <Modal visible animationType="fade">
-      <StreamVideo client={client}>
-        <StreamCall call={call}>
-          <View style={{ flex: 1, backgroundColor: '#000' }}>
-            <CallContent style={{ flex: 1 }} />
-            <CallControls
-              onHangupCallHandler={async () => {
-                try {
-                  await call.leave();
-                  await client.disconnectUser();
-                  await professionalService.completeBooking(booking.id, firebaseService);
-                  onClose();
-                } catch (err) {
-                  console.error('Error ending call:', err);
-                  onClose();
-                }
-              }}
-            />
-          </View>
-        </StreamCall>
-      </StreamVideo>
-    </Modal>
-  );
+  return null;
 };
 
-// Rating Modal (keeping your existing implementation)
+// RATING MODAL COMPONENT
 export const RatingModal = ({ professional, booking, onClose }: {
   professional: Professional;
   booking: Booking;
@@ -421,7 +429,7 @@ export const RatingModal = ({ professional, booking, onClose }: {
 
   const handleSubmit = async () => {
     if (rating === 0) {
-      Alert.alert(i18n.t("rating_required"), i18n.t("please_select_rating"));
+      Alert.alert("Rating Required", "Please select a rating before submitting");
       return;
     }
 
@@ -435,21 +443,23 @@ export const RatingModal = ({ professional, booking, onClose }: {
         rating,
         comment: comment.trim(),
       });
-      Alert.alert(i18n.t("thank_you"), i18n.t("review_submitted"));
+      Alert.alert("Thank You!", "Your review has been submitted successfully");
       onClose();
     } catch (error: any) {
-      Alert.alert(i18n.t("error"), error.message || i18n.t("failed_to_submit"));
+      Alert.alert("Error", error.message || "Failed to submit review");
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (booking.rated) return null;
 
   return (
     <Modal visible animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: theme.cardBackground }]}>
           <View style={[styles.modalHeader, { backgroundColor: theme.primary }]}>
-            <ThemedText type="h3" lightColor="#fff">{i18n.t("rate_consultation")}</ThemedText>
+            <ThemedText type="h3" lightColor="#fff">Rate Your Consultation</ThemedText>
             <Pressable onPress={onClose} disabled={submitting}>
               <Feather name="x" size={24} color="#fff" />
             </Pressable>
@@ -466,7 +476,7 @@ export const RatingModal = ({ professional, booking, onClose }: {
 
             <View style={{ alignItems: 'center', marginBottom: Spacing.lg }}>
               <ThemedText weight="medium" style={{ marginBottom: Spacing.md }}>
-                {i18n.t("how_was_consultation")}
+                How was your consultation?
               </ThemedText>
               <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -484,11 +494,11 @@ export const RatingModal = ({ professional, booking, onClose }: {
 
             <View>
               <ThemedText weight="medium" style={{ marginBottom: Spacing.sm }}>
-                {i18n.t("additional_comments")}
+                Additional Comments (Optional)
               </ThemedText>
               <TextInput
                 style={[styles.textArea, { backgroundColor: theme.backgroundSecondary, color: theme.text, borderColor: theme.border }]}
-                placeholder={i18n.t("share_experience")}
+                placeholder="Share your experience..."
                 placeholderTextColor={theme.textSecondary}
                 value={comment}
                 onChangeText={setComment}
@@ -501,14 +511,14 @@ export const RatingModal = ({ professional, booking, onClose }: {
 
           <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
             <PrimaryButton
-              title={i18n.t("skip")}
+              title="Skip"
               onPress={onClose}
               variant="outlined"
               style={{ flex: 1 }}
               disabled={submitting}
             />
             <PrimaryButton
-              title={submitting ? i18n.t("submitting") : i18n.t("submit_review")}
+              title={submitting ? "Submitting..." : "Submit Review"}
               onPress={handleSubmit}
               disabled={submitting || rating === 0}
               style={{ flex: 1, marginLeft: Spacing.sm }}
@@ -522,36 +532,25 @@ export const RatingModal = ({ professional, booking, onClose }: {
 
 const styles = StyleSheet.create({
   profileImageLarge: { 
-    width: 120, 
-    height: 120, 
-    borderRadius: 60,
-    borderWidth: 4,
+    width: 150, 
+    height: 150, 
+    borderRadius: 75,
+    borderWidth: 5,
     borderColor: '#fff',
+  },
+  sessionTimer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 30,
+    marginTop: 20,
   },
   timerContainer: {
     padding: Spacing["3xl"],
     borderRadius: BorderRadius.lg,
     borderWidth: 2,
     alignItems: 'center',
-    marginTop: Spacing["3xl"],
-    width: '90%'
-  },
-  infoBox: {
-    flexDirection: 'row',
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    marginTop: Spacing.xl,
-    alignItems: 'center',
-    maxWidth: '90%',
-  },
-  queueCard: {
-    flexDirection: 'row',
-    padding: Spacing.xl,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 2,
-    alignItems: 'center',
-    marginTop: Spacing.xl,
     width: '90%'
   },
   bigCallButton: {
@@ -564,18 +563,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 10,
-  },
-  callIconCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
   },
   modalOverlay: {
     flex: 1,

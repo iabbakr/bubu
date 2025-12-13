@@ -10,12 +10,21 @@ import { useTheme } from "@/hooks/useTheme";
 import OrderDetailScreen from "@/screens/OrderDetailScreen";
 import AdminDisputeScreen from "@/screens/AdminDisputeDashboard";
 import DisputeChatScreen from "@/screens/DisputeChatScreen";
+import VideoCallScreen from "@/screens/VideoCallScreen";
+
 
 export type OrdersStackParamList = {
   Orders: undefined;
   OrderDetailScreen: { orderId: string };
   DisputeChatScreen: { orderId: string };
   AdminDisputeScreen: { orderId: string };
+  VideoCall: {
+    streamUserId: string;
+    streamUserName: string;
+    streamUserImage?: string;
+    callId: string;
+    bookingId: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<OrdersStackParamList>();
@@ -67,6 +76,14 @@ export default function OrdersStackNavigator() {
               <Feather name="headphones" size={24} color={theme.primary} />
             </Pressable>
           ),
+        }}
+      />
+      <Stack.Screen
+        name="VideoCall"
+        component={VideoCallScreen}
+        options={{
+          headerShown: false,
+          gestureEnabled: false,
         }}
       />
     </Stack.Navigator>

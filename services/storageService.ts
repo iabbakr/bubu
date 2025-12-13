@@ -14,7 +14,8 @@ export const uploadPrescription = async (
   uri: string,
   fileName: string,
   userId: string,
-  productId: string
+  productId: string,
+  mimeType?: string
 ): Promise<string> => {
   try {
     console.log("Starting prescription upload:", { uri, fileName, userId, productId });

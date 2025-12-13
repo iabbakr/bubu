@@ -1,4 +1,5 @@
-// screens/ProfessionalsScreen.tsx - FINAL ENHANCED WITH EMERGENCY & BOOKING MODALS
+// screens/ProfessionalsScreen.tsx - UPDATED
+
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -21,10 +22,12 @@ import { useTheme } from "../hooks/useTheme";
 import { useAuth } from "../hooks/useAuth";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { professionalService, Professional, Booking, Review } from "../services/professionalService";
-import { firebaseService } from "../services/firebaseService";
+// IMPORTANT: Assuming firebaseService contains the walletService logic for this context
+import { firebaseService } from "../services/firebaseService"; 
 // IMPORTANT: Assuming ConsultationModal and RatingModal are imported from their own file (ConsultationModal.tsx)
 import { ConsultationModal, RatingModal } from "../components/ConsultationModal";
 import i18n from "../lib/i18n";
+import { useNavigation } from "@react-navigation/native"; 
 
 type ProfessionalType = "doctor" | "pharmacist" | "therapist" | "dentist" | "lawyer";
 
@@ -33,6 +36,9 @@ const PLACEHOLDER_IMAGE = "https://via.placeholder.com/400x400/6366f1/ffffff?tex
 export default function ProfessionalsScreen({ route }: any) {
   const { theme } = useTheme();
   const { user } = useAuth();
+  // 🛑 ADDED: Navigation instance
+  const navigation = useNavigation<any>(); 
+  
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [filteredProfessionals, setFilteredProfessionals] = useState<Professional[]>([]);
   const [selectedType, setSelectedType] = useState<"all" | ProfessionalType>("all");
@@ -40,13 +46,12 @@ export default function ProfessionalsScreen({ route }: any) {
   const [loading, setLoading] = useState(true);
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
-  const [showEmergencyModal, setShowEmergencyModal] = useState(false); // <--- NEW STATE
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false); // ✅ NEW STATE: Emergency Modal
   const [showProfile, setShowProfile] = useState(false);
   const [showConsultation, setShowConsultation] = useState(false);
   const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
   const [showRating, setShowRating] = useState(false);
   const [professionalReviews, setProfessionalReviews] = useState<Review[]>([]);
-  // queuePosition state is no longer needed here as it's managed by ConsultationModal
 
   useEffect(() => {
     loadProfessionals();
@@ -63,10 +68,8 @@ export default function ProfessionalsScreen({ route }: any) {
       setLoading(true);
       const data = await professionalService.getAllProfessionals();
       
-      // FIX: Cast `prof` to Professional inside the map function 
-      // to resolve the 'maxDailySlots' and 'acceptsEmergency' errors
       const mappedData = data.map(prof => {
-          const professional = prof as Professional; // Explicit cast for safer property access
+          const professional = prof as Professional;
           return {
               ...professional,
               professionalType: (professional.professionalType || "doctor") as ProfessionalType,
@@ -81,9 +84,10 @@ export default function ProfessionalsScreen({ route }: any) {
               reviewCount: professional.reviewCount || 0,
               isOnline: professional.isOnline || false,
               isVerified: professional.isVerified !== false,
-              // These properties are now safely accessed via the 'professional' variable
               maxDailySlots: professional.maxDailySlots || 10, 
+              // Ensure acceptsEmergency defaults to true if not set, or false based on professional's choice
               acceptsEmergency: professional.acceptsEmergency !== false, 
+              workplace: professional.workplace || "", // Ensure workplace is included
           };
       });
       setProfessionals(mappedData as Professional[]);
@@ -112,9 +116,13 @@ export default function ProfessionalsScreen({ route }: any) {
 
   const handleViewProfile = async (professional: Professional) => {
     setSelectedProfessional(professional);
-    const reviews = await professionalService.getProfessionalReviews(professional.uid);
-    setProfessionalReviews(reviews);
-    setShowProfile(true);
+    try {
+      const reviews = await professionalService.getProfessionalReviews(professional.uid);
+      setProfessionalReviews(reviews);
+      setShowProfile(true);
+    } catch (error) {
+       Alert.alert(i18n.t("error"), i18n.t("failed_to_load_reviews"));
+    }
   };
 
   const handleBookNow = (professional: Professional) => {
@@ -126,12 +134,12 @@ export default function ProfessionalsScreen({ route }: any) {
     setShowBookingModal(true);
   };
 
-  const handleEmergency = (professional: Professional) => { // <--- NEW FUNCTION
+  const handleEmergency = (professional: Professional) => { 
     if (!user) {
       Alert.alert(i18n.t("sign_in_required"), i18n.t("please_sign_in"));
       return;
     }
-    // Accessing properties safely via the state variable
+    // Check for offline status and if they accept emergency
     if (!professional.isOnline || professional.acceptsEmergency === false) {
         Alert.alert(i18n.t("not_available"), i18n.t("professional_not_available_emergency"));
         return;
@@ -139,11 +147,20 @@ export default function ProfessionalsScreen({ route }: any) {
     setSelectedProfessional(professional);
     setShowEmergencyModal(true);
   };
+  
+  // ✅ ADDED: Call History Navigation Handler
+  const handleViewCallHistory = () => {
+      if (!user) {
+          Alert.alert(i18n.t("sign_in_required"), i18n.t("please_sign_in"));
+          return;
+      }
+      
+      // Determine the navigation target based on user role (assuming 'CallHistory' is a dedicated screen/tab)
+      navigation.navigate('CallHistory');
+  };
+
 
   const renderProfessionalCard = ({ item }: { item: Professional }) => {
-    // Note: The destructuring below is still necessary for setting defaults 
-    // in case the Firestore data doesn't provide them, but the casting above 
-    // ensures TypeScript knows the properties *can* exist.
     const safeItem = {
       ...item,
       professionalType: (item.professionalType || "doctor") as ProfessionalType,
@@ -158,9 +175,9 @@ export default function ProfessionalsScreen({ route }: any) {
       imageUrl: item.imageUrl || PLACEHOLDER_IMAGE,
       isOnline: item.isOnline || false,
       isVerified: item.isVerified !== false,
-      // The properties that caused the error:
       maxDailySlots: item.maxDailySlots || 10,
       acceptsEmergency: item.acceptsEmergency !== false,
+      workplace: item.workplace || "", // Ensure workplace is available
     };
 
     const typeColors: Record<ProfessionalType, string> = {
@@ -184,117 +201,148 @@ export default function ProfessionalsScreen({ route }: any) {
 
     return (
       <Pressable
+        key={safeItem.uid}
         style={[styles.professionalCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
         onPress={() => handleViewProfile(safeItem)}
       >
-        <View style={styles.cardHeader}>
-          <Image source={{ uri: safeItem.imageUrl }} style={styles.professionalImage} />
-          <View style={styles.headerOverlay}>
-            {safeItem.isOnline && (
-              <View style={[styles.statusBadge, { backgroundColor: theme.success }]}>
-                <View style={styles.pulseDot} />
-                <ThemedText lightColor="#fff" style={styles.statusText}>
-                  {i18n.t("online")}
+        {/* Top Section: Image on Left, Info on Right */}
+        <View style={styles.topSection}>
+          {/* Left: Image Container */}
+          <View style={styles.imageWrapper}>
+            <Image source={{ uri: safeItem.imageUrl }} style={styles.professionalImage} />
+            
+            {/* Badges Overlay on Image */}
+            <View style={styles.imageBadges}>
+              {safeItem.isOnline && (
+                <View style={[styles.statusBadge, { backgroundColor: theme.success }]}>
+                  <View style={styles.pulseDot} />
+                  <ThemedText lightColor="#fff" style={styles.statusText}>
+                    {i18n.t("online")}
+                  </ThemedText>
+                </View>
+              )}
+              {safeItem.isVerified && (
+                <View style={[styles.verifiedBadge, { backgroundColor: theme.info }]}>
+                  <Feather name="shield" size={14} color="#fff" />
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Right: Professional Info */}
+          <View style={styles.profInfoContainer}>
+            <View style={styles.nameRow}>
+              <ThemedText weight="bold" style={styles.profName}>
+                {safeItem.name}
+              </ThemedText>
+              <View style={styles.ratingRow}>
+              <Feather name="star" size={14} color="#fbbf24" />
+              <ThemedText weight="medium" style={styles.ratingText}>
+                {safeItem.rating.toFixed(1)}
+              </ThemedText>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                ({safeItem.reviewCount})
+              </ThemedText>
+            </View>
+            </View>
+            
+            <ThemedText style={[styles.specialization, { color: theme.textSecondary }]}>
+
+              <Feather name={typeIcon} size={13} color={typeColor} />{" "}
+              {safeItem.specialization}
+            </ThemedText>
+
+            <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 4 }}>
+              {safeItem.yearsOfExperience} {i18n.t("years_experience")}
+            </ThemedText>
+
+            {/* ✅ ADDED: Workplace below years of experience */}
+            {safeItem.workplace ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                <Feather name="briefcase" size={12} color={theme.textSecondary} />
+                <ThemedText type="caption" style={{ color: theme.textSecondary, marginLeft: 4 }}>
+                  {safeItem.workplace}
                 </ThemedText>
               </View>
-            )}
-            {safeItem.isVerified && (
-              <View style={[styles.verifiedBadge, { backgroundColor: theme.info }]}>
-                <Feather name="shield" size={14} color="#fff" />
-              </View>
-            )}
-          </View>
-          <View style={styles.headerBottom}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.xs }}>
-              <Feather name={typeIcon} size={16} color="#fff" />
-              <ThemedText lightColor="#fff" style={{ fontSize: 13 }}>
-                {safeItem.specialization}
+            ) : null}
+
+            <View style={[styles.feeContainer, { backgroundColor: theme.primary + "15", marginTop: 8 }]}>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                {i18n.t("consultation_fee")}
+              </ThemedText>
+              <ThemedText weight="bold" style={{ color: theme.primary, fontSize: 18 }}>
+                ₦{safeItem.consultationFee.toLocaleString()}
               </ThemedText>
             </View>
           </View>
         </View>
 
-        <View style={styles.cardContent}>
-          <View style={styles.titleRow}>
-            <View style={{ flex: 1 }}>
-              <ThemedText weight="medium" style={{ fontSize: 18 }}>{safeItem.name}</ThemedText>
-              <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
-                {safeItem.yearsOfExperience} {i18n.t("years_experience")}
-              </ThemedText>
-            </View>
-            <View style={{ alignItems: "flex-end" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <Feather name="star" size={14} color="#fbbf24" />
-                <ThemedText weight="medium">{safeItem.rating.toFixed(1)}</ThemedText>
-              </View>
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                ({safeItem.reviewCount} {i18n.t("reviews")})
-              </ThemedText>
-            </View>
-          </View>
-
-          <View style={styles.statsGrid}>
+        {/* Bottom Section: Stats, Queue Info, and Actions */}
+        <View style={styles.bottomSection}>
+          {/* Stats Grid */}
+          <View style={styles.statsRow}>
             <View style={[styles.statBox, { backgroundColor: theme.info + "15" }]}>
-              <Feather name="users" size={16} color={theme.info} />
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+              <Feather name="users" size={13} color={theme.info} />
+              <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
                 {i18n.t("queue")}
               </ThemedText>
-              <ThemedText weight="medium" style={{ color: theme.info, fontSize: 18 }}>
+              <ThemedText weight="bold" style={{ color: theme.info, fontSize: 8 }}>
                 {safeItem.currentQueue}
               </ThemedText>
             </View>
+
             <View style={[styles.statBox, { backgroundColor: theme.success + "15" }]}>
-              <Feather name="clock" size={16} color={theme.success} />
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+              <Feather name="clock" size={13} color={theme.success} />
+              <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
                 {i18n.t("next_slot")}
               </ThemedText>
-              <ThemedText weight="medium" style={{ color: theme.success }}>
+              <ThemedText weight="medium" style={{ color: theme.success, fontSize: 8 }}>
                 {safeItem.nextAvailable}
               </ThemedText>
             </View>
-          </View>
 
-          <View style={styles.feeRow}>
-            <View>
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                {i18n.t("consultation_fee")}
-              </ThemedText>
-              <ThemedText type="h3">₦{safeItem.consultationFee.toLocaleString()}</ThemedText>
-            </View>
-            <View style={{ alignItems: "flex-end" }}>
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+            <View style={[styles.statBox, { backgroundColor: theme.warning + "15" }]}>
+              <Feather name="zap" size={13} color={theme.warning} />
+              <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: 2 }}>
                 {i18n.t("avg_response")}
               </ThemedText>
-              <ThemedText weight="medium">{safeItem.responseTime}</ThemedText>
+              <ThemedText weight="medium" style={{ color: theme.warning, fontSize: 8 }}>
+                {safeItem.responseTime}
+              </ThemedText>
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.md }}>
+          {/* Action Buttons */}
+          <View style={styles.actionRow}>
             <Pressable
               style={[styles.actionButton, { backgroundColor: theme.backgroundSecondary, flex: 1 }]}
               onPress={() => handleViewProfile(safeItem)}
             >
-              <ThemedText weight="medium">{i18n.t("view_profile")}</ThemedText>
+              <Feather name="user" size={16} color={theme.text} />
+              <ThemedText weight="medium" style={{ marginLeft: 6 }}>
+                {i18n.t("view_profile")}
+              </ThemedText>
             </Pressable>
+
             <Pressable
-              style={[styles.actionButton, { backgroundColor: theme.primary, flex: 1 }]}
+              style={[styles.actionButton, { backgroundColor: theme.primary, flex: 1.2 }]}
               onPress={() => handleBookNow(safeItem)}
             >
               <Feather name="calendar" size={16} color="#fff" />
-              <ThemedText lightColor="#fff" weight="medium" style={{ marginLeft: Spacing.xs }}>
+              <ThemedText lightColor="#fff" weight="medium" style={{ marginLeft: 6 }}>
                 {i18n.t("schedule_consultation")}
               </ThemedText>
             </Pressable>
           </View>
 
-          {/* Emergency Button - Re-introduced */}
+          {/* Emergency Button */}
           {safeItem.acceptsEmergency && safeItem.isOnline && (
             <Pressable
               style={[styles.emergencyButton, { backgroundColor: theme.error }]}
               onPress={() => handleEmergency(safeItem)}
             >
               <Feather name="zap" size={18} color="#fff" />
-              <ThemedText lightColor="#fff" weight="medium" style={{ marginLeft: Spacing.sm }}>
+              <ThemedText lightColor="#fff" weight="bold" style={{ marginLeft: 8 }}>
                 🚨 {i18n.t("emergency_consultation")} - ₦10,000
               </ThemedText>
             </Pressable>
@@ -314,11 +362,23 @@ export default function ProfessionalsScreen({ route }: any) {
               {i18n.t("connect_with_experts")}
             </ThemedText>
           </View>
-          <View style={[styles.onlineBadge, { backgroundColor: theme.success + "20" }]}>
-            <Feather name="check-circle" size={14} color={theme.success} />
-            <ThemedText type="caption" weight="medium" style={{ color: theme.success }}>
-              {professionals.filter(p => p.isOnline).length} {i18n.t("online")}
-            </ThemedText>
+          
+          <View style={styles.headerActions}>
+            <View style={[styles.onlineBadge, { backgroundColor: theme.success + "20" }]}>
+              <Feather name="check-circle" size={14} color={theme.success} />
+              <ThemedText type="caption" weight="medium" style={{ color: theme.success }}>
+                {professionals.filter(p => p.isOnline).length} {i18n.t("online")}
+              </ThemedText>
+            </View>
+            {/* ✅ ADDED: Call History Icon */}
+            {user && (
+              <Pressable 
+                onPress={handleViewCallHistory} 
+                style={[styles.callHistoryIcon, { backgroundColor: theme.backgroundSecondary }]}
+              >
+                <Feather name="phone" size={24} color={theme.text} />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -404,7 +464,8 @@ export default function ProfessionalsScreen({ route }: any) {
             setShowProfile(false);
             handleBookNow(selectedProfessional);
           }}
-          onEmergency={() => { // <--- NEW PROP
+          // ✅ UPDATED: Added onEmergency prop
+          onEmergency={() => { 
             setShowProfile(false);
             handleEmergency(selectedProfessional);
           }}
@@ -424,7 +485,7 @@ export default function ProfessionalsScreen({ route }: any) {
         />
       )}
       
-      {/* Emergency Modal - NEW MODAL */}
+      {/* ✅ NEW MODAL: Emergency Modal */}
       {showEmergencyModal && selectedProfessional && (
         <EmergencyModal
             professional={selectedProfessional}
@@ -444,8 +505,7 @@ export default function ProfessionalsScreen({ route }: any) {
           booking={currentBooking}
           onClose={() => {
             setShowConsultation(false);
-            // Only show rating if the booking status is 'completed' (managed internally in ConsultationModal or after it ends)
-            // For now, assume a completed consultation leads to rating:
+            // After consultation closes, trigger rating. The internal logic of ConsultationModal should handle when this happens.
             setShowRating(true); 
           }}
         />
@@ -469,7 +529,7 @@ export default function ProfessionalsScreen({ route }: any) {
 }
 
 // ===================================
-// MODAL COMPONENTS
+// MODAL COMPONENTS (Updated/New)
 // ===================================
 
 // Profile Modal Component (Updated with Emergency Button)
@@ -478,9 +538,10 @@ const ProfileModal = ({ professional, reviews, onClose, onBook, onEmergency }: {
     reviews: Review[];
     onClose: () => void;
     onBook: () => void;
-    onEmergency: () => void;
+    onEmergency: () => void; // ✅ UPDATED: Added onEmergency
   }) => {
     const { theme } = useTheme();
+    // ✅ Logic to determine if emergency button should be active
     const acceptsEmergency = professional.acceptsEmergency !== false && professional.isOnline;
   
     return (
@@ -494,7 +555,10 @@ const ProfileModal = ({ professional, reviews, onClose, onBook, onEmergency }: {
   
             <ScrollView style={styles.modalBody}>
               <View style={{ alignItems: "center", marginBottom: Spacing.lg }}>
+                
                 <Image source={{ uri: professional.imageUrl || PLACEHOLDER_IMAGE }} style={styles.profileImageLarge} />
+
+              
                 <ThemedText type="h3" style={{ marginTop: Spacing.md }}>{professional.name}</ThemedText>
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                   {professional.specialization}
@@ -541,6 +605,12 @@ const ProfileModal = ({ professional, reviews, onClose, onBook, onEmergency }: {
                   <View style={[styles.detailRow, { backgroundColor: theme.backgroundSecondary }]}>
                     <ThemedText type="caption">{i18n.t("languages")}</ThemedText>
                     <ThemedText weight="medium">{professional.languages.join(", ")}</ThemedText>
+                  </View>
+                )}
+                {professional.workplace && (
+                  <View style={[styles.detailRow, { backgroundColor: theme.backgroundSecondary }]}>
+                    <ThemedText type="caption">{i18n.t("workplace")}</ThemedText>
+                    <ThemedText weight="medium">{professional.workplace}</ThemedText>
                   </View>
                 )}
               </View>
@@ -594,13 +664,12 @@ const ProfileModal = ({ professional, reviews, onClose, onBook, onEmergency }: {
     );
   };
 
-// BookingModal Component (Scheduled)
+// BookingModal Component (Scheduled) - Logic is unchanged, but included for completeness
 const BookingModal = ({ professional, onClose, onConfirm }: {
   professional: Professional;
   onClose: () => void;
   onConfirm: (booking: Booking) => void;
 }) => {
-    // ... (logic remains the same for regular booking)
   const { theme } = useTheme();
   const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState("");
@@ -619,6 +688,7 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
   const loadAvailableSlots = async () => {
     setLoadingSlots(true);
     try {
+      // Assuming getAvailableSlots is implemented to handle date format
       const slots = await professionalService.getAvailableSlots(professional.uid, selectedDate);
       setAvailableSlots(slots);
       setSelectedTime("");
@@ -680,7 +750,9 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
 
             <ScrollView style={styles.modalBody}>
               <View style={[styles.professionalInfo, { backgroundColor: theme.backgroundSecondary }]}>
+                
                 <Image source={{ uri: professional.imageUrl || PLACEHOLDER_IMAGE }} style={styles.modalImage} />
+                
                 <View>
                   <ThemedText weight="medium">{professional.name}</ThemedText>
                   <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -692,7 +764,7 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
                 </View>
               </View>
 
-              <View style={[styles.infoBox, { backgroundColor: theme.info + "15", borderColor: theme.info }]}>
+              <View style={[styles.infoBox, { backgroundColor: theme.info + "15", borderColor: theme.info, marginTop: Spacing.md }]}>
                 <Feather name="info" size={20} color={theme.info} />
                 <ThemedText style={{ marginLeft: Spacing.md, flex: 1, color: theme.textSecondary }}>
                   {i18n.t("payment_on_hold")}
@@ -782,7 +854,7 @@ const BookingModal = ({ professional, onClose, onConfirm }: {
   );
 };
 
-// Emergency Modal Component - NEW
+// ✅ NEW MODAL: Emergency Modal
 const EmergencyModal = ({ professional, onClose, onConfirm }: {
     professional: Professional;
     onClose: () => void;
@@ -798,12 +870,14 @@ const EmergencyModal = ({ professional, onClose, onConfirm }: {
       setSubmitting(true);
   
       try {
+        // IMPORTANT: We pass firebaseService here, assuming it holds the walletService functionality
         const booking = await professionalService.createEmergencyBooking(
           professional.uid,
           user.uid,
           user.name || "Patient",
           professional.name,
-          reason.trim() || null
+          reason.trim() || null,
+          firebaseService
         );
         
         onConfirm(booking);
@@ -883,207 +957,293 @@ const EmergencyModal = ({ professional, onClose, onConfirm }: {
     );
   };
   
-// The inline ConsultationModal and RatingModal definitions have been removed to use the imported ones.
+// Note: The original styles in the prompt need to be replaced by the improved styles for the components to render correctly.
 
 const styles = StyleSheet.create({
-    // ... (rest of the styles remain the same)
-    container: { flex: 1 },
-    header: {
-      padding: Spacing.lg,
-      paddingBottom: Spacing.md,
-      elevation: 4,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4
-    },
-    headerContent: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: Spacing.md
-    },
-    onlineBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.xs,
-      borderRadius: BorderRadius.full
-    },
-    searchBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      padding: Spacing.md,
-      borderRadius: BorderRadius.md,
-      borderWidth: 1,
-      marginBottom: Spacing.md
-    },
-    searchInput: { flex: 1, marginLeft: Spacing.sm, fontSize: 16 },
-    filterRow: { flexDirection: "row", gap: Spacing.sm },
-    filterButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.sm,
-      borderRadius: BorderRadius.md,
-      borderWidth: 1
-    },
-    listContent: { padding: Spacing.lg },
-    professionalCard: {
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      marginBottom: Spacing.lg,
-      overflow: "hidden"
-    },
-    cardHeader: { height: 180, position: "relative" },
-    professionalImage: { width: "100%", height: "100%", resizeMode: "cover" },
-    headerOverlay: {
-      position: "absolute",
-      top: Spacing.md,
-      right: Spacing.md,
-      flexDirection: "row",
-      gap: Spacing.xs
-    },
-    statusBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: Spacing.sm,
-      paddingVertical: Spacing.xs,
-      borderRadius: BorderRadius.full,
-      gap: 4
-    },
-    pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#fff" },
-    statusText: { fontSize: 11, fontWeight: "600" },
-    verifiedBadge: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      justifyContent: "center",
-      alignItems: "center"
-    },
-    headerBottom: {
-      position: "absolute",
-      bottom: 0,
-      left: 0,
-      right: 0,
-      padding: Spacing.md,
-      backgroundColor: "rgba(0,0,0,0.6)"
-    },
-    cardContent: { padding: Spacing.lg },
-    titleRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: Spacing.md
-    },
-    statsGrid: { flexDirection: "row", gap: Spacing.sm, marginBottom: Spacing.md },
-    statBox: {
-      flex: 1,
-      padding: Spacing.md,
-      borderRadius: BorderRadius.md,
-      alignItems: "center"
-    },
-    feeRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      paddingVertical: Spacing.md,
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
-      borderColor: "#eee",
-      marginBottom: Spacing.md
-    },
-    actionButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: Spacing.md,
-      borderRadius: BorderRadius.md
-    },
-    emptyState: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 100
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
-      justifyContent: "flex-end"
-    },
-    modalContent: {
-      borderTopLeftRadius: BorderRadius.xl,
-      borderTopRightRadius: BorderRadius.xl,
-      maxHeight: "90%"
-    },
-    modalHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: Spacing.lg
-    },
-    modalBody: { padding: Spacing.lg, maxHeight: 500 },
-    professionalInfo: {
-      flexDirection: "row",
-      padding: Spacing.md,
-      borderRadius: BorderRadius.md,
-      gap: Spacing.md,
-      marginBottom: Spacing.lg
-    },
-    modalImage: { width: 60, height: 60, borderRadius: 30 },
-    section: { marginBottom: Spacing.lg },
-    input: {
-      borderWidth: 1,
-      borderRadius: BorderRadius.md,
-      padding: Spacing.md,
-      marginTop: Spacing.sm
-    },
-    textArea: {
-      borderWidth: 1,
-      borderRadius: BorderRadius.md,
-      padding: Spacing.md,
-      marginTop: Spacing.sm,
-      minHeight: 100,
-      textAlignVertical: "top"
-    },
-    timeGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: Spacing.sm,
-      marginTop: Spacing.sm
-    },
-    timeSlot: {
-      padding: Spacing.md,
-      borderRadius: BorderRadius.md,
-      borderWidth: 2,
-      minWidth: "30%",
-      alignItems: "center"
-    },
-    modalFooter: { flexDirection: "row", padding: Spacing.lg, borderTopWidth: 1 },
-    profileImageLarge: { width: 120, height: 120, borderRadius: 60 },
-    detailRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      padding: Spacing.md,
-      borderRadius: BorderRadius.md,
-      marginBottom: Spacing.xs
-    },
-    reviewCard: {
-      padding: Spacing.md,
-      borderRadius: BorderRadius.md,
-      marginBottom: Spacing.sm
-    },
-    emergencyButton: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-        marginTop: Spacing.sm,
-      },
-      infoBox: {
-        flexDirection: 'row',
-        padding: Spacing.lg,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        marginTop: Spacing.xl,
-        alignItems: 'center'
-      },
-  });
+  container: { flex: 1,
+  paddingTop: 100,
+ },
+  header: {
+    padding: Spacing.lg,
+    paddingBottom: Spacing.md,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4
+  },
+  headerContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: Spacing.md
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  callHistoryIcon: {
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.full,
+  },
+  onlineBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginBottom: Spacing.md,
+  },
+  searchInput: { flex: 1, marginLeft: Spacing.sm, fontSize: 16 },
+  filterRow: { flexDirection: "row", gap: Spacing.sm },
+  filterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1
+  },
+  listContent: { padding: Spacing.lg },
+
+  // ===== IMPROVED PROFESSIONAL CARD STYLES =====
+  professionalCard: {
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    marginBottom: Spacing.lg,
+    overflow: "hidden",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+
+  // Top Section (Image + Info side by side)
+  topSection: {
+    flexDirection: "row",
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+
+  imageWrapper: {
+    position: "relative",
+    width: 120,
+    height: 120,
+  },
+
+  professionalImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: BorderRadius.lg,
+    resizeMode: "cover"
+  },
+
+  imageBadges: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    gap: 4,
+  },
+
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    gap: 4
+  },
+
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#fff"
+  },
+
+  statusText: {
+    fontSize: 10,
+    fontWeight: "600"
+  },
+
+  verifiedBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center"
+  },
+
+  profInfoContainer: {
+    flex: 1,
+    justifyContent: "flex-start",
+  },
+
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+
+  profName: {
+    fontSize: 18,
+    flex: 1,
+  },
+
+  specialization: {
+    fontSize: 14,
+    marginBottom: 6,
+  },
+
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+  },
+
+  ratingText: {
+    fontSize: 14,
+  },
+
+  feeContainer: {
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
+  },
+
+  // Bottom Section (Stats + Actions)
+  bottomSection: {
+    padding: Spacing.lg,
+    paddingTop: 0,
+    gap: Spacing.md,
+  },
+
+  statsRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+
+  statBox: {
+    flex: 1,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 50,
+  },
+
+  actionRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+
+  emergencyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+
+  // Other existing styles...
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 100
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end"
+  },
+  modalContent: {
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    maxHeight: "90%"
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: Spacing.lg
+  },
+  modalBody: { padding: Spacing.lg, maxHeight: 500 },
+  professionalInfo: {
+    flexDirection: "row",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg
+  },
+  modalImage: { width: 60, height: 60, borderRadius: 30 },
+  section: { marginBottom: Spacing.lg },
+  input: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    minHeight: 100,
+    textAlignVertical: "top"
+  },
+  timeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+    marginTop: Spacing.sm
+  },
+  timeSlot: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+    minWidth: "30%",
+    alignItems: "center"
+  },
+  modalFooter: { flexDirection: "row", padding: Spacing.lg, borderTopWidth: 1 },
+  profileImageLarge: { width: 120, height: 120, borderRadius: 60 },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.xs
+  },
+  reviewCard: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.sm
+  },
+  infoBox: {
+    flexDirection: 'row',
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    marginTop: Spacing.xl,
+    alignItems: 'center'
+  },
+});

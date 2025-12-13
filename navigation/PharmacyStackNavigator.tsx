@@ -4,11 +4,20 @@ import ProductDetailScreen from "@/screens/ProductDetailScreen";
 import CartScreen from "@/screens/CartScreen";
 import { getCommonScreenOptions } from "@/navigation/screenOptions";
 import { useTheme } from "@/hooks/useTheme";
+import VideoCallScreen from "@/screens/VideoCallScreen";
+
 
 export type PharmacyStackParamList = {
   Pharmacy: undefined;
   ProductDetail: { productId: string };
   Cart: undefined;
+  VideoCall: {
+    streamUserId: string;
+    streamUserName: string;
+    streamUserImage?: string;
+    callId: string;
+    bookingId: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<PharmacyStackParamList>();
@@ -38,6 +47,14 @@ export default function PharmacyStackNavigator() {
         component={CartScreen}
         options={{
           title: "Shopping Cart",
+        }}
+      />
+      <Stack.Screen
+        name="VideoCall"
+        component={VideoCallScreen}
+        options={{
+          headerShown: false,
+          gestureEnabled: false,
         }}
       />
     </Stack.Navigator>

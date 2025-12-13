@@ -36,6 +36,8 @@ import StateManagerDashboard from "../screens/StateManagerDashboard";
 import WishlistScreen from "@/screens/WishlistScreen";
 import ProfessionalDashboard from "@/screens/ProfessionalDashboardScreen";
 import VideoCallTestScreen from '@/screens/VideoCallTestScreen';
+import CallHistoryScreen from "@/screens/CallHistoryScreen";
+import VideoCallScreen from "@/screens/VideoCallScreen";
 
 
 export type ProfileStackParamList = {
@@ -64,9 +66,16 @@ export type ProfileStackParamList = {
   ForgotPassword: undefined;
   AdminRole: undefined;
   VideoCallTest: undefined;
-  
+  CallHistory: undefined;
   AdminRoleManagement: undefined;
   StateManagerDashboard: undefined;
+  VideoCall: {
+    streamUserId: string;
+    streamUserName: string;
+    streamUserImage?: string;
+    callId: string;
+    bookingId: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -134,6 +143,14 @@ export default function ProfileStackNavigator() {
   options={{ title: "Video Call Test" }}
 />
 
+<Stack.Screen
+        name="VideoCall"
+        component={VideoCallScreen}
+        options={{
+          headerShown: false,
+          gestureEnabled: false,
+        }}
+      />
           <Stack.Screen
             name="ChangePassword"
             component={ChangePasswordScreen}
@@ -229,7 +246,11 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
-
+          <Stack.Screen 
+            name="CallHistory" 
+            component={CallHistoryScreen} 
+            options={{ title: "Call History" }} 
+            />
           <Stack.Screen
             name="Cart"
             component={CartScreen}
