@@ -9,6 +9,7 @@ import ProfessionalsScreen from "@/screens/ProfessionalsScreen";
 import VideoCallScreen from "@/screens/VideoCallScreen";
 import CallHistoryScreen from "@/screens/CallHistoryScreen";
 import TVScreen from "@/screens/TVScreen";
+import PatientCallHistoryScreen from "@/screens/PatientCallHistoryScreen";
 
 export type ServicesStackParamList = {
   Services: undefined;
@@ -28,6 +29,7 @@ export type ServicesStackParamList = {
     callId: string,
   };
   CallHistory: undefined;
+  PatientCallHistory: undefined;
 };
 
 const Stack = createNativeStackNavigator<ServicesStackParamList>();
@@ -84,6 +86,11 @@ export default function ServicesStackNavigator() {
       <Stack.Screen
         name="CallHistory"
         component={CallHistoryScreen}
+        options={{ title: "Call History" }}
+      />
+     <Stack.Screen
+        name="PatientCallHistory"
+        component={PatientCallHistoryScreen}
         options={{ title: "Call History" }}
       />
     </Stack.Navigator>

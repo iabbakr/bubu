@@ -1,4 +1,3 @@
-// services/professionalService.ts - FINAL FIX: Typed Booking Variable
 import { db } from "../lib/firebase";
 import {
   collection,
@@ -20,16 +19,12 @@ import { notificationService } from './notificationService';
 import { createCallSession } from "./streamService"; 
 
 // --- CONSTANTS & TYPES ---
-type ProfessionalType = "doctor" | "pharmacist" | "therapist" | "dentist" | "lawyer";
+export type ProfessionalType = "doctor" | "pharmacist" | "therapist" | "dentist" | "lawyer";
 
 const MAX_DAILY_SLOTS = 10; 
 const SLOT_DURATION_MINUTES = 30;
-const CONSULTATION_DURATION_MS = 30 * 60 * 1000;
-const NOTIFICATION_DELAY_MS = 1500; 
-
-// 🌟 CALL FLOW TIMING CONSTANTS
-const PROFESSIONAL_CONNECTION_DELAY_MS = 3000; // Wait for professional to connect
-const PATIENT_NOTIFICATION_DELAY_MS = 1500;   // Additional delay before patient notification
+const EMERGENCY_FEE = 10000;
+const EMERGENCY_RESPONSE_TIME = 10 * 60 * 1000; 
 
 const SLOT_LIMITS: Record<ProfessionalType, number> = {
   doctor: MAX_DAILY_SLOTS,
@@ -38,9 +33,6 @@ const SLOT_LIMITS: Record<ProfessionalType, number> = {
   lawyer: MAX_DAILY_SLOTS,
   pharmacist: 20, 
 };
-
-const EMERGENCY_FEE = 10000;
-const EMERGENCY_RESPONSE_TIME = 10 * 60 * 1000; 
 
 export interface TimeSlot {
   id: string;
@@ -79,6 +71,19 @@ export interface Professional {
   updatedAt?: number;
 }
 
+export interface Prescription { 
+  id: string; // Same as bookingId
+  professionalId: string;
+  patientId: string;
+  bookingId: string;
+  medications: string;
+  dosage: string;
+  duration: string;
+  instructions: string;
+  notes?: string;
+  createdAt: number;
+}
+
 export interface Booking {
   id: string;
   professionalId: string;
@@ -109,6 +114,7 @@ export interface Booking {
   rated?: boolean;
   cancelReason?: string;
   currentCallId?: string;
+  prescriptionId?: string; 
 }
 
 export interface Review {
@@ -160,7 +166,6 @@ const generateTimeSlots = (startTime: string, endTime: string, duration: number)
   const slots: string[] = [];
   const start = parseTime(startTime);
   const end = parseTime(endTime);
-  
   const finalDuration = duration > 0 ? duration : 30;
 
   let current = start;
@@ -213,6 +218,27 @@ export const professionalService = {
     });
   },
 
+  // ✅ ADDED: Get Stats for Dashboard (Fixes the "Failed to load data" error)
+  async getProfessionalStats(professionalId: string) {
+    const bookings = await this.getProfessionalBookings(professionalId);
+    const professional = await this.getProfessional(professionalId);
+
+    const completed = bookings.filter(b => b.status === "completed");
+    const cancelled = bookings.filter(b => b.status === "cancelled" || b.status === "rejected");
+    
+    // Calculate total earnings from completed bookings
+    const totalEarnings = completed.reduce((sum, booking) => sum + booking.fee, 0);
+
+    return {
+      totalBookings: bookings.length,
+      completedConsultations: completed.length,
+      cancelledConsultations: cancelled.length,
+      totalEarnings,
+      averageRating: professional?.rating || 0,
+      reviewCount: professional?.reviewCount || 0,
+    };
+  },
+
   async getProfessionalsByType(type: ProfessionalType): Promise<Professional[]> {
     const q = query(
       collection(db, "users"),
@@ -249,6 +275,47 @@ export const professionalService = {
       await updateDoc(doc(db, "users", professionalId), {
         consultationsCompleted: (professional.consultationsCompleted || 0) + 1,
       });
+    }
+  },
+
+  // ✅ ADDED: Get Reviews for a Professional
+  async getProfessionalReviews(professionalId: string): Promise<Review[]> {
+    const q = query(
+      collection(db, "reviews"),
+      where("professionalId", "==", professionalId),
+      orderBy("createdAt", "desc")
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return { id: doc.id, ...data } as Review;
+    });
+  },
+
+  // ✅ ADDED: Add a Review (Helper for RatingModal)
+  async addReview(reviewData: Omit<Review, "id" | "createdAt">): Promise<void> {
+    const review = {
+        ...reviewData,
+        createdAt: Date.now()
+    };
+    
+    await addDoc(collection(db, "reviews"), review);
+
+    const professionalRef = doc(db, "users", reviewData.professionalId);
+    const professionalSnap = await getDoc(professionalRef);
+    
+    if (professionalSnap.exists()) {
+        const prof = professionalSnap.data() as Professional;
+        const currentCount = prof.reviewCount || 0;
+        const currentRating = prof.rating || 5.0;
+        
+        const newCount = currentCount + 1;
+        const newRating = ((currentRating * currentCount) + reviewData.rating) / newCount;
+
+        await updateDoc(professionalRef, {
+            rating: newRating,
+            reviewCount: newCount
+        });
     }
   },
 
@@ -305,16 +372,10 @@ export const professionalService = {
   async getAvailableSlots(professionalId: string, date: string): Promise<string[]> {
     try {
       const professional = await this.getProfessional(professionalId);
-      if (!professional) {
-        console.log('❌ Professional not found');
-        return [];
-      }
+      if (!professional) return [];
 
       const remainingSlots = await this.getRemainingDailySlots(professionalId, date);
-      if (remainingSlots <= 0) {
-        console.log('❌ No remaining slots for this day');
-        return [];
-      }
+      if (remainingSlots <= 0) return [];
 
       const [year, month, day] = date.split('-').map(num => parseInt(num, 10));
       const dateObj = new Date(year, month - 1, day);
@@ -325,10 +386,7 @@ export const professionalService = {
         slot => slot.day === dayName && slot.isEnabled !== false
       );
       
-      if (!dayAvailability) {
-        console.log('❌ No availability for', dayName);
-        return [];
-      }
+      if (!dayAvailability) return [];
 
       const slots = generateTimeSlots(
         dayAvailability.startTime,
@@ -346,12 +404,44 @@ export const professionalService = {
       const bookedTimes = bookingsSnap.docs.map(doc => doc.data().time);
 
       const availableSlots = slots.filter(slot => !bookedTimes.includes(slot));
-      
       return availableSlots.slice(0, remainingSlots);
     } catch (error) {
       console.error('❌ Error getting available slots:', error);
       return [];
     }
+  },
+  
+  // ==================== PRESCRIPTION MANAGEMENT ====================
+
+  async savePrescription(bookingId: string, professionalId: string, data: Omit<Prescription, 'id' | 'createdAt' | 'professionalId' | 'bookingId' | 'patientId'>, patientId: string): Promise<void> {
+    const prescriptionRef = doc(db, "prescriptions", bookingId); 
+    const bookingRef = doc(db, "bookings", bookingId);
+
+    const prescriptionData: Prescription = {
+        id: bookingId,
+        professionalId: professionalId,
+        patientId: patientId,
+        bookingId: bookingId,
+        medications: data.medications,
+        dosage: data.dosage,
+        duration: data.duration,
+        instructions: data.instructions,
+        notes: data.notes,
+        createdAt: Date.now(),
+    };
+
+    await setDoc(prescriptionRef, prescriptionData, { merge: true });
+    
+    await updateDoc(bookingRef, {
+        prescriptionId: bookingId,
+        updatedAt: Date.now(),
+    });
+  },
+
+  async getPrescription(prescriptionId: string): Promise<Prescription | null> {
+    const snap = await getDoc(doc(db, "prescriptions", prescriptionId));
+    if (!snap.exists()) return null;
+    return snap.data() as Prescription;
   },
 
   // ==================== BOOKING - REGULAR ====================
@@ -370,10 +460,8 @@ export const professionalService = {
       where("professionalId", "==", professionalId),
       where("status", "in", ["pending_confirmation", "confirmed", "ready", "in_progress"])
     );
-    
     const snapshot = await getDocs(bookingsQuery);
     if (snapshot.empty) return null;
-    
     return snapshot.docs[0].data() as Booking;
   },
 
@@ -384,10 +472,8 @@ export const professionalService = {
       where("isEmergency", "==", true),
       where("status", "in", ["emergency_pending", "emergency_confirmed", "in_progress"])
     );
-    
     const snapshot = await getDocs(emergencyQuery);
     if (snapshot.empty) return null;
-    
     return snapshot.docs[0].data() as Booking;
   },
 
@@ -407,16 +493,15 @@ export const professionalService = {
 
     const availableSlots = await this.getAvailableSlots(bookingData.professionalId, bookingData.date);
     if (!availableSlots.includes(bookingData.time)) {
-      throw new Error("The selected slot is no longer available. Please choose another time or date.");
+      throw new Error("The selected slot is no longer available.");
     }
     
     const existingBooking = await this.getPatientPendingBookingWithProfessional(
       bookingData.patientId, 
       bookingData.professionalId
     );
-    
     if (existingBooking) {
-      throw new Error(`You already have a pending consultation with ${bookingData.professionalName}. Please complete or cancel it first.`);
+      throw new Error(`You already have a pending consultation with ${bookingData.professionalName}.`);
     }
 
     const scheduledTimestamp = getScheduledTimestamp(bookingData.date, bookingData.time);
@@ -445,9 +530,8 @@ export const professionalService = {
 
     const ref = await addDoc(collection(db, "bookings"), booking);
     await updateDoc(ref, { id: ref.id });
-
     await soundManager.play('orderPlaced');
-
+    
     const snap = await getDoc(ref);
     return snap.data() as Booking;
   },
@@ -469,12 +553,12 @@ export const professionalService = {
 
     const patientWallet = await walletService.getWallet(patientId);
     if (patientWallet.balance < EMERGENCY_FEE) {
-      throw new Error(`Insufficient balance. Emergency consultation requires ₦${EMERGENCY_FEE.toLocaleString()}. Please add funds to your wallet.`);
+      throw new Error(`Insufficient balance. Emergency requires ₦${EMERGENCY_FEE.toLocaleString()}.`);
     }
 
     const existingEmergency = await this.getPatientActiveEmergency(patientId);
     if (existingEmergency) {
-      throw new Error("You already have an active emergency consultation. Please complete it first.");
+      throw new Error("You already have an active emergency consultation.");
     }
 
     const now = Date.now();
@@ -530,27 +614,16 @@ export const professionalService = {
   async confirmBooking(bookingId: string, professionalId: string, walletService: any): Promise<void> {
     const bookingRef = doc(db, "bookings", bookingId);
     const bookingSnap = await getDoc(bookingRef);
-    
     if (!bookingSnap.exists()) throw new Error("Booking not found");
     const booking = bookingSnap.data() as Booking;
     
-    if (booking.professionalId !== professionalId) {
-      throw new Error("Unauthorized");
-    }
-
-    const validStatuses = ["pending_confirmation", "emergency_pending"];
-    if (!validStatuses.includes(booking.status)) {
-      throw new Error("Booking already processed");
-    }
-
+    if (booking.professionalId !== professionalId) throw new Error("Unauthorized");
     if (booking.isEmergency && booking.emergencyDeadline && Date.now() > booking.emergencyDeadline) {
-      throw new Error("Emergency consultation request has expired");
+      throw new Error("Emergency expired");
     }
 
     const patientWallet = await walletService.getWallet(booking.patientId);
-    if (patientWallet.balance < booking.fee) {
-      throw new Error("Patient has insufficient balance");
-    }
+    if (patientWallet.balance < booking.fee) throw new Error("Insufficient balance");
 
     await walletService.debitWallet(booking.patientId, booking.fee, { 
       description: `${booking.isEmergency ? 'Emergency ' : ''}Consultation Hold for ${booking.professionalName}` 
@@ -594,31 +667,23 @@ export const professionalService = {
     
     await notificationService.sendLocalNotification(
         "Consultation Confirmed! ✅",
-        `${booking.professionalName} has confirmed your consultation for ${booking.date} at ${booking.time}.`,
+        `${booking.professionalName} has confirmed your consultation.`,
         { bookingId: booking.id, type: 'booking_confirmed' }
     );
-
     await soundManager.play('acknowledged');
   },
 
   async rejectBooking(bookingId: string, professionalId: string, reason?: string, walletService?: any): Promise<void> {
     const bookingRef = doc(db, "bookings", bookingId);
     const bookingSnap = await getDoc(bookingRef);
-    
     if (!bookingSnap.exists()) throw new Error("Booking not found");
     const booking = bookingSnap.data() as Booking;
 
-    if (booking.professionalId !== professionalId) {
-      throw new Error("Unauthorized");
-    }
-    
-    if (booking.status === "completed" || booking.status === "rejected" || booking.status === "cancelled") {
-      throw new Error("Cannot reject an already processed booking");
-    }
+    if (booking.professionalId !== professionalId) throw new Error("Unauthorized");
 
     await updateDoc(bookingRef, {
       status: "rejected",
-      cancelReason: reason || "Professional unavailable/Request declined",
+      cancelReason: reason || "Request declined",
       updatedAt: Date.now(),
     });
 
@@ -626,9 +691,7 @@ export const professionalService = {
         await walletService.refundHeldPayment(booking.professionalId, booking.patientId, booking.fee, {
             description: `Refund for rejected consultation with ${booking.professionalName}`,
         });
-        await updateDoc(bookingRef, {
-          paymentStatus: "refunded",
-        });
+        await updateDoc(bookingRef, { paymentStatus: "refunded" });
     }
 
     await this.updateQueueCount(booking.professionalId);
@@ -638,7 +701,6 @@ export const professionalService = {
   async rejectCall(bookingId: string, rejecterId: string): Promise<void> {
     const bookingRef = doc(db, "bookings", bookingId);
     const bookingSnap = await getDoc(bookingRef);
-    
     if (!bookingSnap.exists()) throw new Error("Booking not found");
     const booking = bookingSnap.data() as Booking;
 
@@ -657,30 +719,22 @@ export const professionalService = {
     await soundManager.play('dispute');
   },
   
-  // ==================== CALL INITIATION - FIXED & TYPED ====================
+  // ==================== CALL INITIATION ====================
   
-  // 🔥 FIX: Explicitly cast 'booking' to Booking type
   async initiateCall(bookingId: string, professionalId: string): Promise<string> {
     const bookingRef = doc(db, "bookings", bookingId);
     const bookingSnap = await getDoc(bookingRef);
-    
     if (!bookingSnap.exists()) throw new Error("Booking not found");
     
-    // ✅ FIX: TypeScript explicit casting
     const booking = bookingSnap.data() as Booking; 
 
-    if (booking.professionalId !== professionalId) {
-      throw new Error("Only the professional can initiate a call");
-    }
+    if (booking.professionalId !== professionalId) throw new Error("Unauthorized");
 
-    // 1. Get User Data
     const profDoc = await getDoc(doc(db, "users", professionalId));
     const patDoc = await getDoc(doc(db, "users", booking.patientId));
     const profData = profDoc.data();
     const patData = patDoc.data();
 
-    // 2. Create Session on Backend
-    console.log("📡 Creating call on backend...");
     const callId = await createCallSession(
       bookingId,
       professionalId,
@@ -689,33 +743,20 @@ export const professionalService = {
       patData?.name || "Patient"
     );
 
-    // 3. Update Status: In Progress, but LOCKED for patient
     await updateDoc(bookingRef, {
       status: "in_progress",
       currentCallId: callId,
       callInitiatedBy: professionalId,
       callStartedAt: Date.now(),
-      sessionExpiresAt: Date.now() + (30 * 60 * 1000), // 30 mins
-      canStartCall: false, // 🔒 LOCKED: Patient cannot click Join yet
+      sessionExpiresAt: Date.now() + (30 * 60 * 1000), 
+      canStartCall: false, 
       updatedAt: Date.now(),
     });
 
-    // 4. ⏳ BUFFER 1: Propagation Delay (2 seconds)
-    // Allows Stream servers to sync the new call ID globally
-    console.log("⏳ Waiting for propagation...");
     await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // 5. Unlock for Patient
-    await updateDoc(bookingRef, {
-      canStartCall: true, // 🔓 UNLOCKED
-    });
-
-    // 6. ⏳ BUFFER 2: Notification Delay (1 second)
-    // Ensures Firestore has synced the unlock before the push notification hits
+    await updateDoc(bookingRef, { canStartCall: true });
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // 7. Send Notification
-    console.log("📲 Notifying patient...");
     await notificationService.sendIncomingCallNotification({
       callId: callId,
       bookingId: bookingId,
@@ -733,7 +774,7 @@ export const professionalService = {
   async joinCall(bookingId: string, patientId: string): Promise<string> {
     const bookingRef = doc(db, "bookings", bookingId);
     const bookingSnap = await getDoc(bookingRef);
-    const booking = bookingSnap.data() as Booking; // Type cast here too
+    const booking = bookingSnap.data() as Booking; 
 
     if (!booking) throw new Error("Booking not found");
     if (!booking.currentCallId) throw new Error("No active call");
@@ -744,8 +785,6 @@ export const professionalService = {
 
   async completeBooking(bookingId: string, walletService: any): Promise<void> {
     const bookingRef = doc(db, "bookings", bookingId);
-    
-    // First get the booking to know the fee and participants
     const bookingSnap = await getDoc(bookingRef);
     if (!bookingSnap.exists()) throw new Error("Booking not found");
     const booking = bookingSnap.data() as Booking;
@@ -888,21 +927,12 @@ export const professionalService = {
   async checkAndEnableReadyBookings(): Promise<void> {
     const now = Date.now();
     const bufferTime = 15 * 60 * 1000;
-
-    const upcomingQuery = query(
-      collection(db, "bookings"),
-      where("status", "==", "confirmed")
-    );
-
+    const upcomingQuery = query(collection(db, "bookings"), where("status", "==", "confirmed"));
     const snapshot = await getDocs(upcomingQuery);
     
     for (const docSnap of snapshot.docs) {
       const booking = docSnap.data() as Booking;
-      
-      if (booking.scheduledTimestamp && 
-          booking.scheduledTimestamp - now <= bufferTime &&
-          booking.scheduledTimestamp > now) {
-        
+      if (booking.scheduledTimestamp && booking.scheduledTimestamp - now <= bufferTime && booking.scheduledTimestamp > now) {
         await this.enableCallForBooking(booking.id);
       }
     }
@@ -910,17 +940,11 @@ export const professionalService = {
 
   async checkAndExpireEmergencyBookings(): Promise<void> {
     const now = Date.now();
-
-    const emergencyQuery = query(
-      collection(db, "bookings"),
-      where("status", "==", "emergency_pending")
-    );
-
+    const emergencyQuery = query(collection(db, "bookings"), where("status", "==", "emergency_pending"));
     const snapshot = await getDocs(emergencyQuery);
     
     for (const docSnap of snapshot.docs) {
       const booking = docSnap.data() as Booking;
-      
       if (booking.emergencyDeadline && now > booking.emergencyDeadline) {
         await updateDoc(doc(db, "bookings", booking.id), {
           status: "rejected",
@@ -931,14 +955,8 @@ export const professionalService = {
     }
   },
   
-  async scheduleReminder(
-    bookingId: string,
-    patientId: string,
-    professionalId: string,
-    scheduledTime: number
-  ): Promise<void> {
+  async scheduleReminder(bookingId: string, patientId: string, professionalId: string, scheduledTime: number): Promise<void> {
     const reminderTime = scheduledTime - (15 * 60 * 1000);
-    
     if (reminderTime > Date.now()) {
       await Notifications.scheduleNotificationAsync({
         content: {
@@ -954,7 +972,6 @@ export const professionalService = {
   async checkAndSendReminders(): Promise<void> {
     const now = Date.now();
     const reminderWindow = 20 * 60 * 1000;
-
     const upcomingQuery = query(
       collection(db, "bookings"),
       where("status", "==", "confirmed"),
@@ -966,11 +983,7 @@ export const professionalService = {
     
     for (const docSnap of snapshot.docs) {
       const booking = docSnap.data() as Booking;
-      
-      if (booking.scheduledTimestamp && 
-          booking.scheduledTimestamp - now <= reminderWindow &&
-          booking.scheduledTimestamp > now) {
-        
+      if (booking.scheduledTimestamp && booking.scheduledTimestamp - now <= reminderWindow && booking.scheduledTimestamp > now) {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "Consultation Starting Soon!",

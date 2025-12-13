@@ -17,7 +17,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../hooks/useAuth';
 import { Spacing, BorderRadius } from '../constants/theme';
-import { professionalService, Booking } from '../services/professionalService';
+import { professionalService, Booking } from '../services/professionalService'; // Assuming Booking now includes prescriptionId
 import i18n from '../lib/i18n';
 
 const PLACEHOLDER_IMAGE = "https://via.placeholder.com/400x400/6366f1/ffffff?text=User";
@@ -106,15 +106,37 @@ export default function CallHistoryScreen() {
     setSelectedCall(call);
   };
 
-  const handleSendPrescription = (call: Booking) => {
+  const handleSendPrescription = async (call: Booking) => {
     setSelectedCall(call);
-    setPrescriptionData({
-      medications: '',
-      dosage: '',
-      duration: '',
-      instructions: '',
-      notes: '',
-    });
+    
+    if (call.prescriptionId) {
+      // Load existing prescription data for editing
+      try {
+        const existing = await professionalService.getPrescription(call.prescriptionId);
+        if (existing) {
+          setPrescriptionData({
+            medications: existing.medications,
+            dosage: existing.dosage,
+            duration: existing.duration,
+            instructions: existing.instructions,
+            notes: existing.notes,
+          });
+        }
+      } catch (error) {
+        console.error('Error loading existing prescription:', error);
+        // Fallback to empty data if loading fails
+      }
+    } else {
+      // Clear data for new prescription
+      setPrescriptionData({
+        medications: '',
+        dosage: '',
+        duration: '',
+        instructions: '',
+        notes: '',
+      });
+    }
+
     setShowPrescriptionModal(true);
   };
 
@@ -125,21 +147,33 @@ export default function CallHistoryScreen() {
     if (!prescriptionData.medications.trim() || 
         !prescriptionData.dosage.trim() || 
         !prescriptionData.instructions.trim()) {
-      Alert.alert('Missing Information', 'Please fill in all required fields');
+      Alert.alert('Missing Information', 'Please fill in all required fields (Medications, Dosage, Instructions)');
       return;
     }
 
     try {
-      // Here you would save the prescription to Firestore
-      // For now, we'll just show a success message
+      // 🌟 FIX: Call the new service function to save the prescription
+      await professionalService.savePrescription(
+        selectedCall.id,
+        user.uid,
+        prescriptionData,
+        selectedCall.patientId
+      );
       
       Alert.alert(
-        'Prescription Sent',
-        `Prescription sent to ${selectedCall.patientName} successfully`,
-        [{ text: 'OK', onPress: () => setShowPrescriptionModal(false) }]
+        selectedCall.prescriptionId ? 'Prescription Updated' : 'Prescription Sent',
+        `Prescription ${selectedCall.prescriptionId ? 'updated' : 'sent'} to ${selectedCall.patientName} successfully`,
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            setShowPrescriptionModal(false);
+            loadCallHistory(); // Reload history to update the card status
+          } 
+        }]
       );
     } catch (error) {
-      Alert.alert('Error', 'Failed to send prescription');
+      console.error('Error submitting prescription:', error);
+      Alert.alert('Error', 'Failed to send prescription. Please try again.');
     }
   };
 
@@ -148,6 +182,8 @@ export default function CallHistoryScreen() {
     const duration = item.callStartedAt 
       ? Math.floor((Date.now() - item.callStartedAt) / 60000)
       : 0;
+
+    const hasPrescription = !!item.prescriptionId;
 
     return (
       <Pressable
@@ -224,12 +260,24 @@ export default function CallHistoryScreen() {
           </Pressable>
           
           <Pressable
-            style={[styles.actionButton, { backgroundColor: theme.primary + '20' }]}
+            style={[
+              styles.actionButton,
+              { 
+                backgroundColor: hasPrescription ? theme.success + '20' : theme.primary + '20',
+              }
+            ]}
             onPress={() => handleSendPrescription(item)}
           >
-            <Feather name="file-text" size={16} color={theme.primary} />
-            <ThemedText type="caption" style={{ color: theme.primary }}>
-              Prescription
+            <Feather 
+              name={hasPrescription ? "file-text" : "edit-3"} 
+              size={16} 
+              color={hasPrescription ? theme.success : theme.primary} 
+            />
+            <ThemedText 
+              type="caption" 
+              style={{ color: hasPrescription ? theme.success : theme.primary }}
+            >
+              {hasPrescription ? 'Edit Prescription' : 'Prescription'}
             </ThemedText>
           </Pressable>
         </View>
@@ -320,7 +368,7 @@ export default function CallHistoryScreen() {
             <View style={[styles.modalContent, { backgroundColor: theme.cardBackground }]}>
               <View style={[styles.modalHeader, { backgroundColor: theme.primary }]}>
                 <ThemedText type="h3" lightColor="#fff">
-                  Send Prescription
+                  {selectedCall.prescriptionId ? 'Edit Prescription' : 'Send Prescription'}
                 </ThemedText>
                 <Pressable onPress={() => setShowPrescriptionModal(false)}>
                   <Feather name="x" size={24} color="#fff" />
@@ -422,7 +470,7 @@ export default function CallHistoryScreen() {
                   style={{ flex: 1 }}
                 />
                 <PrimaryButton
-                  title="Send Prescription"
+                  title={selectedCall.prescriptionId ? 'Save Changes' : 'Send Prescription'}
                   onPress={submitPrescription}
                   style={{ flex: 1, marginLeft: 12 }}
                 />
@@ -560,6 +608,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
   modalBody: {
     padding: 20,
