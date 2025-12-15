@@ -38,6 +38,7 @@ import ProfessionalDashboard from "@/screens/ProfessionalDashboardScreen";
 import VideoCallTestScreen from '@/screens/VideoCallTestScreen';
 import CallHistoryScreen from "@/screens/CallHistoryScreen";
 import VideoCallScreen from "@/screens/VideoCallScreen";
+import SecuritySettingsScreen from "@/screens/SecuritySettingsScreen";
 
 
 export type ProfileStackParamList = {
@@ -76,6 +77,8 @@ export type ProfileStackParamList = {
     callId: string;
     bookingId: string;
   };
+SecuritySettings: undefined;
+
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -237,7 +240,16 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
-
+{/*
+          <Stack.Screen
+            name="SecuritySettings"
+            component={SecuritySettingsScreen}
+            options={{
+              title: "security Settings",
+              headerBackTitle: "Back",
+            }}
+          />
+ Withdraw Funds Screen 
           <Stack.Screen
             name="HelpCenter"
             component={HelpCenterScreen}
@@ -246,6 +258,7 @@ export default function ProfileStackNavigator() {
               headerBackTitle: "Back",
             }}
           />
+          */}
           <Stack.Screen 
             name="CallHistory" 
             component={CallHistoryScreen} 

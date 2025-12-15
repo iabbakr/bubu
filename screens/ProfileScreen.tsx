@@ -1,3 +1,4 @@
+// screens/ProfileScreen.tsx - FIXED
 import { View, StyleSheet, Pressable, Alert } from "react-native";
 import { useState, useEffect } from "react";
 import { Feather } from "@expo/vector-icons";
@@ -10,13 +11,11 @@ import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { Spacing, BorderRadius } from "../constants/theme";
 import { useLanguage } from "../context/LanguageContext";
-import i18n from "../lib/i18n"; // ← ADD THIS LINE
-import {T} from "../components/T";
+import i18n from "../lib/i18n";
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<ProfileStackParamList, 'Profile'>;
-
 
 export default function ProfileScreen() {
   const { locale } = useLanguage();
@@ -24,8 +23,6 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const navigation = useNavigation<ProfileScreenNavigationProp>();
-  
-
 
   useEffect(() => {
     if (user) {
@@ -61,7 +58,13 @@ export default function ProfileScreen() {
     );
   };
 
-  const renderMenuItem = (icon: string, title: string, onPress: () => void, showBadge?: boolean, badgeText?: string) => (
+  const renderMenuItem = (
+    icon: string, 
+    title: string, 
+    onPress: () => void, 
+    showBadge?: boolean, 
+    badgeText?: string
+  ) => (
     <Pressable
       style={({ pressed }) => [
         styles.menuItem,
@@ -115,14 +118,11 @@ export default function ProfileScreen() {
   return (
     <ScreenScrollView>
       <View style={styles.container}>
-        {/* Profile Header */}
-        
-
         {/* Wallet Preview Card */}
         {wallet && (
           <Pressable
             style={[styles.walletPreviewCard, { backgroundColor: theme.primary }]}
-            onPress={() => navigation.navigate("Wallet" as never)}
+            onPress={() => navigation.navigate("Wallet")}
           >
             <View style={styles.walletPreviewLeft}>
               <Feather name="credit-card" size={24} color="#fff" />
@@ -152,9 +152,9 @@ export default function ProfileScreen() {
           {renderMenuItem(
             "user", 
             i18n.t("account_information"),
-            () => navigation.navigate("AccountInfo" as never)
+            () => navigation.navigate("AccountInfo")
           )}
-          {renderMenuItem("shopping-cart", i18n.t("cart"), () => navigation.navigate("Cart" as never))}
+          {renderMenuItem("shopping-cart", i18n.t("cart"), () => navigation.navigate("Cart"))}
           {renderMenuItem("shopping-bag", i18n.t("order"), () => {})}
           {renderMenuItem("heart", i18n.t("wishlist"), () => navigation.navigate("Wishlist"))}
         </View>
@@ -168,12 +168,12 @@ export default function ProfileScreen() {
             {user.role === "seller" && renderMenuItem(
               "briefcase", 
               i18n.t("seller_dashboard"), 
-              () => navigation.navigate("SellerDashboard" as never)
+              () => navigation.navigate("SellerDashboard")
             )}
             {user.role === "admin" && renderMenuItem(
               "shield", 
               i18n.t("admin_panel"), 
-              () => navigation.navigate("AdminPanel" as never)
+              () => navigation.navigate("AdminPanel")
             )}
             {user.role === "professional" && renderMenuItem(
               "activity", 
@@ -185,51 +185,48 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        // Add this section in ProfileScreen after the Business section
-{(user.role === "state_manager_1" || user.role === "state_manager_2") && (
-  <View style={styles.menuSection}>
-    <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
-      State Management
-    </ThemedText>
-    {renderMenuItem(
-      "map", 
-      "State Dashboard", 
-      () => navigation.navigate("StateManagerDashboard")
-    )}
-  </View>
-)}
+        {/* State Management Section */}
+        {(user.role === "state_manager_1" || user.role === "state_manager_2") && (
+          <View style={styles.menuSection}>
+            <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
+              State Management
+            </ThemedText>
+            {renderMenuItem(
+              "map", 
+              "State Dashboard", 
+              () => navigation.navigate("StateManagerDashboard")
+            )}
+          </View>
+        )}
 
-{user.role === "admin" && (
-  <View style={styles.menuSection}>
-    <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
-      Administration
-    </ThemedText>
-    {renderMenuItem(
-      "shield", 
-      "Admin Panel", 
-      () => navigation.navigate("AdminPanel")
-    )}
-    {renderMenuItem(
-      "users", 
-      "Role Management", 
-      () => navigation.navigate("AdminRoleManagement")
-    )}
-  </View>
-)}
-
-        
+        {/* Administration Section */}
+        {user.role === "admin" && (
+          <View style={styles.menuSection}>
+            <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
+              Administration
+            </ThemedText>
+            {renderMenuItem(
+              "shield", 
+              "Admin Panel", 
+              () => navigation.navigate("AdminPanel")
+            )}
+            {renderMenuItem(
+              "users", 
+              "Role Management", 
+              () => navigation.navigate("AdminRoleManagement")
+            )}
+          </View>
+        )}
 
         {/* Settings Section */}
         <View style={styles.menuSection}>
           <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
             {i18n.t("settings")}
           </ThemedText>
-          
-          
-          {renderMenuItem("bell", i18n.t("notifications"), () => navigation.navigate("NotificationSetting" as never))}
-          {renderMenuItem("lock", i18n.t("privacy_security"), () => {})}
-          {renderMenuItem("globe", i18n.t("language"), () => navigation.navigate("Language" as never))}
-          {renderMenuItem("moon", i18n.t("theme"), () => navigation.navigate("Theme" as never))}
+          {renderMenuItem("bell", i18n.t("notifications"), () => navigation.navigate("NotificationSetting"))}
+
+          {renderMenuItem("globe", i18n.t("language"), () => navigation.navigate("Language"))}
+          {renderMenuItem("moon", i18n.t("theme"), () => navigation.navigate("Theme"))}
         </View>
 
         {/* Support Section */}
@@ -237,7 +234,7 @@ export default function ProfileScreen() {
           <ThemedText type="h4" style={{ marginBottom: Spacing.md, marginLeft: Spacing.xs }}>
             {i18n.t("support")}
           </ThemedText>
-          {renderMenuItem("help-circle", i18n.t("help_center"), () => navigation.navigate("HelpCenter" as never))}
+          {renderMenuItem("help-circle", i18n.t("help_center"), () => navigation.navigate("HelpCenter"))}
           {renderMenuItem("star", i18n.t("rate_us"), () => {})}
           {renderMenuItem("info", i18n.t("about"), () => {})}
         </View>

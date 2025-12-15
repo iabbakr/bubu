@@ -18,7 +18,8 @@
         "NSMicrophoneUsageDescription": "Allows audio during consultations.",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload prescriptions or documents.",
         "NSPhotoLibraryAddUsageDescription": "This app needs access to save photos",
-        
+        "NSFaceIDUsageDescription": "We use Face ID to secure your wallet transactions",
+          
         // Recommended for CallKeep/VOIP:
         "UIBackgroundModes": [
           "audio",
@@ -44,7 +45,9 @@
         "android.permission.WAKE_LOCK",
         "android.permission.FOREGROUND_SERVICE",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE", 
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -66,6 +69,12 @@
           "dark": {
             "backgroundColor": "#FFFFFF"
           }
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID for secure authentication"
         }
       ],
       // PLUGINS RETAINED

@@ -1,4 +1,4 @@
-// App.tsx - FINAL 100% WORKING VERSION (Final Corrected Call)
+// App.tsx - CORRECT VERSION
 import React, { useEffect, useRef, useState } from "react";
 import { NavigationContainer, NavigationContainerRef } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -28,15 +28,17 @@ import { professionalService } from "@/services/professionalService";
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-  shouldPlaySound: false,
-  shouldSetBadge: true,
-  shouldShowBanner: true, 
-  shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: true,
+    shouldShowBanner: true, 
+    shouldShowList: true,
   }),
 });
 
+// ✅ This component now has access to BOTH useAuth AND useTheme
 function NavigationWithIncomingCalls() {
   const { user } = useAuth();
+  const { isDark } = useTheme(); // ✅ Now works!
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const [incomingCallData, setIncomingCallData] = useState<IncomingCallData | null>(null);
@@ -48,15 +50,12 @@ function NavigationWithIncomingCalls() {
       return;
     }
 
-    // Register push token
     notificationService.registerForPushNotifications().then(token => {
       if (token) notificationService.savePushToken(user.uid, token);
     });
 
-    // Firestore listener for incoming calls
     const unsubscribeFirestore = notificationService.listenForIncomingCalls(user.uid, async (data) => {
       if (data) {
-        // Play sound and schedule local notification (for loud ringtone/alert)
         soundManager.play?.('ringtone', { loop: true }); 
         await Notifications.scheduleNotificationAsync({
           content: {
@@ -67,18 +66,15 @@ function NavigationWithIncomingCalls() {
             priority: Notifications.AndroidNotificationPriority.MAX,
             categoryIdentifier: 'CALL', 
           },
-          trigger: null, // show immediately
+          trigger: null,
         });
         setIncomingCallData(data);
-       
       } else {
-        // Call ended externally or was accepted/rejected by the system
         soundManager.stop?.('ringtone');
         setIncomingCallData(null);
       }
     });
 
-    // Handle push notification tap
     responseListener.current = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const data = response.notification.request.content.data;
 
@@ -111,37 +107,24 @@ function NavigationWithIncomingCalls() {
         <MainTabNavigator />
       </NavigationContainer>
 
-       {incomingCallData && user && (
+      {incomingCallData && user && (
         <IncomingCallModal
           callData={incomingCallData}
           navigation={navigationRef.current!} 
           userId={user.uid}                   
-          // 🌟 FIX: Use the existing and correctly typed method clearIncomingCall
           onAccept={async (bookingId) => {
             soundManager.stop?.('ringtone');
             setIncomingCallData(null);
-            // Crucial for RNCallKeep/native cleanup
             await notificationService.clearIncomingCall(user.uid); 
           }}
-          // 🌟 FIX: Use the existing and correctly typed method clearIncomingCall
           onReject={async (bookingId) => {
             soundManager.stop?.('ringtone');
             setIncomingCallData(null);
-            // Crucial for RNCallKeep/native cleanup
             await notificationService.clearIncomingCall(user.uid); 
           }}
         />
       )}
-    </>
-  );
-}
-
-
-function AppContent() {
-  const { isDark } = useTheme();
-  return (
-    <>
-      <NavigationWithIncomingCalls />
+      
       <StatusBar style={isDark ? "light" : "dark"} />
     </>
   );
@@ -154,7 +137,6 @@ export default function App() {
     initI18n().then(() => setIsI18nReady(true));
   }, []);
 
-  // Initialize sound manager
   useEffect(() => {
     soundManager.init();
     return () => {
@@ -162,7 +144,6 @@ export default function App() {
     };
   }, []);
 
-  // Background tasks
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -188,15 +169,16 @@ export default function App() {
       <SafeAreaProvider>
         <GestureHandlerRootView style={styles.root}>
           <KeyboardProvider>
-            <AuthProvider>
-              <CartProvider>
-                <LanguageProvider>
+            <LanguageProvider>
+              <AuthProvider>
+                <CartProvider>
                   <ThemeProvider>
-                    <AppContent />
+                    {/* ✅ NavigationWithIncomingCalls has access to ALL providers */}
+                    <NavigationWithIncomingCalls />
                   </ThemeProvider>
-                </LanguageProvider>
-              </CartProvider>
-            </AuthProvider>
+                </CartProvider>
+              </AuthProvider>
+            </LanguageProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </SafeAreaProvider>
